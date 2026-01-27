@@ -60,6 +60,9 @@ button:hover { background: #218838; }
   <label>Auxiliar</label>
   <select id="auxiliar"></select>
 
+  <label>Veículo</label>
+  <select id="veiculo"></select>
+
   <label>Protocolo</label>
   <input id="protocolo" type="number">
 
@@ -100,11 +103,11 @@ const TELEGRAM_CHAT_ID = "-4860857271";
 let tecnicoNome = "";
 let atendimentoAtual = null;
 
-/* ================= HORA BR ================= */
+/* ================= HORA LOCAL (CORRIGIDA) ================= */
 function agoraBR() {
   const d = new Date();
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const mm = String(d.getMonth() + 1).padStart(2,"0");
   const dd = String(d.getDate()).padStart(2,"0");
   const hh = String(d.getHours()).padStart(2,"0");
   const mi = String(d.getMinutes()).padStart(2,"0");
@@ -142,7 +145,6 @@ function calcularMinutosPlantao(inicioISO, fimISO) {
   let atual = new Date(inicioISO);
   const fim = new Date(fimISO);
   let minutos = 0;
-
   while (atual < fim) {
     const h = atual.getHours();
     if (h >= 18 || h < 8) minutos++;
@@ -169,6 +171,7 @@ async function login() {
   atendimentoForm.style.display = "block";
 
   carregarAuxiliares();
+  carregarVeiculos();
   carregarAtendimentoAberto();
 }
 
@@ -180,11 +183,33 @@ async function carregarAuxiliares() {
     .order("nome");
 
   auxiliar.innerHTML="";
-  data.forEach(a=>{
+  (data||[]).forEach(a=>{
     const o=document.createElement("option");
     o.value=a.nome;
     o.textContent=a.nome;
     auxiliar.appendChild(o);
+  });
+}
+
+/* ================= VEÍCULOS ================= */
+async function carregarVeiculos() {
+  const { data } = await supabaseClient
+    .from("veiculos")
+    .select("placa, modelo")
+    .order("placa");
+
+  veiculo.innerHTML = "";
+
+  const opt = document.createElement("option");
+  opt.value = "";
+  opt.textContent = "— Sem veículo —";
+  veiculo.appendChild(opt);
+
+  (data||[]).forEach(v=>{
+    const o=document.createElement("option");
+    o.value=v.placa;
+    o.textContent=`${v.placa} - ${v.modelo}`;
+    veiculo.appendChild(o);
   });
 }
 
@@ -202,6 +227,7 @@ async function carregarAtendimentoAberto() {
     protocolo.value = data.protocolo;
     motivo.value = data.motivo;
     kmInicial.value = data.km_inicial;
+    veiculo.value = data.veiculo_nome || "";
     setEmAtendimento();
     finalizarBox.style.display = "block";
   } else {
@@ -223,6 +249,7 @@ async function enviarTelegramInicio(at) {
 
 👷 Técnico: ${at.tecnico_nome}
 👥 Auxiliar: ${at.auxiliar_nome}
+🚗 Veículo: ${at.veiculo_nome || "Não informado"}
 📄 Protocolo: ${at.protocolo}
 
 🕒 Início: ${horaBR(at.inicio_deslocamento)}
@@ -252,14 +279,15 @@ async function editarTelegramFinal(at, minutosPlantao) {
 
 👷 Técnico: ${at.tecnico_nome}
 👥 Auxiliar: ${at.auxiliar_nome}
+🚗 Veículo: ${at.veiculo_nome || "Não informado"}
 📄 Protocolo: ${at.protocolo}
 
 🕒 Início: ${horaBR(at.inicio_deslocamento)}
-🚗 KM Inicial: ${at.km_inicial}
-
 🕒 Fim: ${horaBR(at.fim_atendimento)}
-🚗 KM Final: ${at.km_final || "-" }
-📏 KM Total: ${at.km_total || "-"}
+
+🚗 KM Inicial: ${at.km_inicial}
+🚗 KM Final: ${at.km_final || "-"}
+📏 KM Total: ${at.km_total !== null ? at.km_total : "-"}
 
 ⏱ Plantão: ${formatarMinutos(minutosPlantao)}
 
@@ -268,7 +296,6 @@ ${at.motivo}
 
 🧰 Como resolveu:
 ${at.como_resolveu || "Retorno à base"}`
-
     })
   });
 }
@@ -280,6 +307,7 @@ async function iniciarAtendimento() {
   const atendimentoTemp = {
     tecnico_nome: tecnicoNome,
     auxiliar_nome: auxiliar.value,
+    veiculo_nome: veiculo.value || null,
     protocolo: protocolo.value,
     motivo: motivo.value,
     km_inicial: kmInicial.value,
@@ -317,6 +345,7 @@ async function finalizarAtendimento() {
     status: "finalizado",
     km_final: kmFinal.value || null,
     km_total: kmTotal,
+    motivo: atendimentoAtual.motivo,
     como_resolveu: comoResolveu.value || "Retorno à base",
     minutos_plantao: minutosPlantao
   };
