@@ -5,34 +5,13 @@
 <title>Painel do Técnico</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body {
-  font-family: Arial;
-  max-width: 820px;
-  margin: 20px auto;
-  background: #f4f4f4;
-  padding: 20px;
-  border-radius: 8px;
-}
+body { font-family: Arial; max-width: 820px; margin: 20px auto; background: #f4f4f4; padding: 20px; border-radius: 8px; }
 label { font-weight: bold; margin-top: 12px; display:block; }
-input, textarea, select, button {
-  width: 100%;
-  padding: 10px;
-  margin-top: 5px;
-}
-button {
-  background: #28a745;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  margin-top: 10px;
-}
+input, textarea, select, button { width: 100%; padding: 10px; margin-top: 5px; }
+button { background: #28a745; color: #fff; border: none; cursor: pointer; margin-top: 10px; }
 button:hover { background: #218838; }
 #atendimentoForm, #statusAtendimento { display:none; }
-#statusAtendimento {
-  font-weight: bold;
-  font-size: 16px;
-  margin: 8px 0;
-}
+#statusAtendimento { font-weight: bold; font-size: 16px; margin: 8px 0; }
 </style>
 </head>
 
@@ -94,7 +73,7 @@ const TELEGRAM_CHAT_ID = "-4860857271";
 let tecnicoNome = "";
 let atendimentoAtual = null;
 
-/* ===== HORA LOCAL ===== */
+/* ===== FUNÇÕES DE TEMPO ===== */
 function agoraBR() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -107,30 +86,32 @@ function agoraBR() {
 }
 
 function dataBR(iso) {
-  const [d] = iso.split("T");
-  const [y,m,da] = d.split("-");
-  return `${da}/${m}/${y}`;
+  const [date] = iso.split("T");
+  const [y,m,d] = date.split("-");
+  return `${d}/${m}/${y}`;
 }
-function horaBR(iso) { return iso.split("T")[1].slice(0,5); }
-function formatarMinutos(m) {
-  const h = Math.floor(m/60), mm = m%60;
-  return `${String(h).padStart(2,"0")}h${String(mm).padStart(2,"0")}`;
+
+function horaBR(iso) {
+  return iso.split("T")[1].slice(0,5);
+}
+
+function formatarMinutos(min) {
+  const horas = Math.floor(min / 60);
+  const mins = min % 60;
+  return `${String(horas).padStart(2,"0")}h${String(mins).padStart(2,"0")}min`;
 }
 
 function setEmAtendimento() {
-  statusAtendimento.textContent = "🔴 EM ATENDIMENTO";
-}
-function setSemAtendimento() {
-  statusAtendimento.textContent = "🟢 SEM ATENDIMENTO";
-  kmInicial.value = "";
-  kmFinal.value = "";
-  comoResolveu.value = "";
-  iniciarBox.style.display = "none";
-  finalizarBox.style.display = "none";
-  atendimentoAtual = null;
+  document.getElementById("statusAtendimento").textContent = "🔴 EM ATENDIMENTO";
 }
 
-/* ===== CÁLCULO PLANTÃO ===== */
+function setSemAtendimento() {
+  document.getElementById("statusAtendimento").textContent = "🟢 SEM ATENDIMENTO";
+  document.getElementById("iniciarBox").style.display = "none";
+  document.getElementById("finalizarBox").style.display = "none";
+}
+
+/* ===== CÁLCULO DO PLANTÃO ===== */
 function calcularMinutosPlantao(inicioISO, fimISO) {
   let atual = new Date(inicioISO);
   const fim = new Date(fimISO);
@@ -154,16 +135,14 @@ async function login() {
     .single();
 
   if (!data) return alert("Login inválido");
-
   tecnicoNome = data.nome;
-  tecnicoLogado.textContent = tecnicoNome;
-  loginForm.style.display="none";
-  atendimentoForm.style.display="block";
-
+  document.getElementById("tecnicoLogado").textContent = tecnicoNome;
+  document.getElementById("loginForm").style.display = "none";
+  document.getElementById("atendimentoForm").style.display = "block";
   carregarAtendimentos();
 }
 
-/* ===== CARREGAR ATENDIMENTOS ===== */
+/* ===== LISTAR ATENDIMENTOS ABERTOS ===== */
 async function carregarAtendimentos() {
   const { data } = await supabaseClient
     .from("atendimentos")
@@ -172,11 +151,11 @@ async function carregarAtendimentos() {
     .eq("status", "aberto")
     .order("inicio_deslocamento");
 
-  selectAtendimento.innerHTML="";
-
-  if (!data || data.length === 0) {
+  const select = document.getElementById("selectAtendimento");
+  select.innerHTML = "";
+  if(!data || data.length === 0) {
     setSemAtendimento();
-    selectAtendimento.innerHTML="<option>Nenhum atendimento disponível</option>";
+    select.innerHTML = "<option>Nenhum atendimento disponível</option>";
     return;
   }
 
@@ -184,20 +163,19 @@ async function carregarAtendimentos() {
     const o = document.createElement("option");
     o.value = a.id;
     o.textContent = `Prot: ${a.protocolo} | Serviço: ${a.tipo_servico || a.motivo || "Não informado"}`;
-    selectAtendimento.appendChild(o);
+    select.appendChild(o);
   });
 
   atendimentoAtual = data[0];
-  selectAtendimento.value = atendimentoAtual.id;
+  select.value = atendimentoAtual.id;
 
-  // mostra iniciar se km inicial não foi preenchido
   if (!atendimentoAtual.km_inicial) {
-    iniciarBox.style.display="block";
-    finalizarBox.style.display="none";
+    document.getElementById("iniciarBox").style.display = "block";
+    document.getElementById("finalizarBox").style.display = "none";
     setSemAtendimento();
   } else {
-    iniciarBox.style.display="none";
-    finalizarBox.style.display="block";
+    document.getElementById("iniciarBox").style.display = "none";
+    document.getElementById("finalizarBox").style.display = "block";
     setEmAtendimento();
   }
 }
@@ -205,11 +183,13 @@ async function carregarAtendimentos() {
 /* ===== INICIAR ATENDIMENTO ===== */
 async function iniciarAtendimento() {
   if (!atendimentoAtual) return alert("Selecione um atendimento");
-  if (!kmInicial.value) return alert("Informe o KM inicial");
+  const kmIni = document.getElementById("kmInicial").value;
+  if (!kmIni) return alert("Informe o KM inicial");
 
   const dados = {
-    km_inicial: Number(kmInicial.value),
-    inicio_deslocamento: agoraBR()
+    km_inicial: Number(kmIni),
+    inicio_deslocamento: agoraBR(),
+    status: "em andamento"
   };
 
   const { data, error } = await supabaseClient
@@ -219,25 +199,23 @@ async function iniciarAtendimento() {
     .select()
     .single();
 
-  if (error) return alert("Erro ao iniciar atendimento: "+error.message);
+  if (error) return alert("Erro ao iniciar: "+error.message);
 
   atendimentoAtual = data;
   setEmAtendimento();
-  iniciarBox.style.display="none";
-  finalizarBox.style.display="block";
+  document.getElementById("iniciarBox").style.display="none";
+  document.getElementById("finalizarBox").style.display="block";
 
-  // envia mensagem inicial pro Telegram
   await enviarTelegramInicio(atendimentoAtual);
 }
 
-/* ===== ENVIAR PARA TELEGRAM ===== */
+/* ===== ENVIAR MENSAGEM INICIAL PARA TELEGRAM ===== */
 async function enviarTelegramInicio(at) {
-  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
+  const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
       chat_id: TELEGRAM_CHAT_ID,
-      message_thread_id: null,
       text:
 `🚨 ATENDIMENTO INICIADO
 📅 ${dataBR(at.inicio_deslocamento)}
@@ -249,34 +227,40 @@ async function enviarTelegramInicio(at) {
 ⏳ Em andamento...`
     })
   });
-  const j = await res.json();
-  atendimentoAtual.telegram_message_id = j.result.message_id;
+  const json = await resp.json();
+  atendimentoAtual.telegram_message_id = json.result.message_id;
 }
 
 /* ===== FINALIZAR ATENDIMENTO ===== */
 async function finalizarAtendimento() {
   if (!atendimentoAtual) return alert("Nenhum atendimento selecionado");
 
+  const kmF = document.getElementById("kmFinal").value;
+  const relato = document.getElementById("comoResolveu").value;
+
+  if (!kmF) return alert("Informe o KM final");
+  if (!relato) return alert("Descreva como resolveu");
+
   const fim = agoraBR();
   const minutosPlantao = calcularMinutosPlantao(atendimentoAtual.inicio_deslocamento, fim);
-  const kmTotal = Number(kmFinal.value) - Number(atendimentoAtual.km_inicial);
+  const kmTotal = Number(kmF) - Number(atendimentoAtual.km_inicial);
 
   const dados = {
     fim_atendimento: fim,
     status: "finalizado",
-    km_final: Number(kmFinal.value),
+    km_final: Number(kmF),
     km_total: kmTotal,
     minutos_plantao: minutosPlantao,
-    como_resolveu: comoResolveu.value || "Retorno à base"
+    como_resolveu: relato
   };
 
   await supabaseClient.from("atendimentos").update(dados).eq("id", atendimentoAtual.id);
 
-  // edita mensagem no Telegram
+  // Edita mensagem no Telegram
   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText`, {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
       chat_id: TELEGRAM_CHAT_ID,
       message_id: atendimentoAtual.telegram_message_id,
       text:
@@ -292,7 +276,7 @@ async function finalizarAtendimento() {
 🚗 KM Inicial: ${atendimentoAtual.km_inicial}
 🚗 KM Final: ${dados.km_final}
 📏 KM Total: ${dados.km_total}
-⏱ Plantão: ${formatarMinutos(minutosPlantao)}  
+⏱ Plantão: ${formatarMinutos(minutosPlantao)}
 🧰 Como resolveu: ${dados.como_resolveu}`
     })
   });
