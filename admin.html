@@ -4,128 +4,70 @@
 <meta charset="UTF-8">
 <title>Administração</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <style>
-body {
-  font-family: Arial;
-  max-width: 1000px;
-  margin: 20px auto;
-  background: #f4f4f4;
-  padding: 20px;
-  border-radius: 8px;
-}
+body { font-family: Arial; max-width: 1000px; margin: 20px auto; background: #f4f4f4; padding: 20px; border-radius: 8px; }
 h2, h3 { text-align:center; }
-
 label { font-weight: bold; margin-top: 10px; display:block; }
-input, button, select, textarea {
-  width: 100%;
-  padding: 8px;
-  margin-top: 5px;
-}
-
-button {
-  border: none;
-  cursor: pointer;
-  margin-top: 8px;
-}
-
+input, button, textarea { width: 100%; padding: 8px; margin-top: 5px; }
+button { border: none; cursor: pointer; margin-top: 8px; }
 .btn-add { background:#007bff; color:#fff; }
 .btn-edit { background:#ffc107; }
 .btn-danger { background:#dc3545; color:#fff; }
 .btn-success { background:#28a745; color:#fff; }
 .btn-export { background:#28a745; color:#fff; margin-top:20px; }
-
-table {
-  width: 100%;
-  margin-top: 15px;
-  border-collapse: collapse;
-  background:#fff;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 6px;
-}
+table { width: 100%; margin-top: 15px; border-collapse: collapse; background:#fff; }
+th, td { border: 1px solid #ccc; padding: 6px; }
 th { background:#eee; }
 </style>
 </head>
-
 <body>
 
 <h2>Administração</h2>
 
 <!-- ================= TECNICOS ================= -->
 <h3>Cadastro de Técnicos</h3>
-
 <input type="hidden" id="editIdTec">
-
 <label>Nome</label>
 <input id="nomeTec">
-
 <label>Email</label>
 <input id="emailTec">
-
 <label>Senha (opcional)</label>
 <input id="senhaTec" type="password">
-
 <button class="btn-add" onclick="salvarTecnico()">💾 Salvar Técnico</button>
 
 <table>
 <thead>
-<tr>
-  <th>Nome</th>
-  <th>Email</th>
-  <th>Status</th>
-  <th>Ações</th>
-</tr>
+<tr><th>Nome</th><th>Email</th><th>Status</th><th>Ações</th></tr>
 </thead>
 <tbody id="listaTecnicos"></tbody>
 </table>
 
 <!-- ================= AUXILIARES ================= -->
 <h3>Cadastro de Auxiliares</h3>
-
 <input type="hidden" id="editIdAux">
-
 <label>Nome</label>
 <input id="nomeAux">
-
 <label>Local / Base</label>
 <input id="localAux">
-
 <button class="btn-add" onclick="salvarAuxiliar()">💾 Salvar Auxiliar</button>
 
 <table>
 <thead>
-<tr>
-  <th>Nome</th>
-  <th>Local</th>
-  <th>Status</th>
-  <th>Ações</th>
-</tr>
+<tr><th>Nome</th><th>Local</th><th>Status</th><th>Ações</th></tr>
 </thead>
 <tbody id="listaAuxiliares"></tbody>
 </table>
 
-<!-- ================= ATENDIMENTOS ================= -->
-<h3>Criar Atendimento</h3>
-
-<label>Técnico</label>
-<select id="tecnicoAtendimento"></select>
-
-<label>Tipo de Serviço</label>
-<input id="tipoServico">
-
-<label>Motivo / Observação</label>
-<textarea id="motivoAtendimento"></textarea>
-
-<label>Localização (link Google Maps)</label>
-<input id="localizacaoAtendimento" placeholder="https://www.google.com/maps/place/...">
-
-<button class="btn-add" onclick="criarAtendimento()">💾 Criar Atendimento</button>
+<!-- ================= RELATORIO ================= -->
+<h3>Relatório de Plantão</h3>
+<label>Data início</label>
+<input type="date" id="dataInicio">
+<label>Data fim</label>
+<input type="date" id="dataFim">
+<button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
 <script>
 const { createClient } = supabase;
 const supabaseClient = createClient(
@@ -135,28 +77,36 @@ const supabaseClient = createClient(
 
 /* ================= UTIL ================= */
 function formatarPlantao(min) {
-  if (min === null || min === undefined) return "00h00min";
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+  if (min===null||min===undefined) return "00h00min";
+  const h=Math.floor(min/60), m=min%60;
   return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}min`;
 }
 
 /* ================= TECNICOS ================= */
 async function listarTecnicos() {
-  const { data: tecnicos } = await supabaseClient
-    .from("tecnicos")
-    .select("*")
-    .order("nome");
-
+  const { data: tecnicos } = await supabaseClient.from("tecnicos").select("*").order("nome");
+  const { data: atendimentos } = await supabaseClient.from("atendimentos")
+    .select("tecnico_nome, protocolo, inicio_deslocamento, status")
+    .eq("status", "aberto");
   listaTecnicos.innerHTML = "";
-  tecnicoAtendimento.innerHTML = "<option value=''>Selecione</option>";
-
-  (tecnicos || []).forEach(t => {
-    listaTecnicos.innerHTML += `
+  (tecnicos||[]).forEach(t => {
+    const atendimento = (atendimentos||[]).find(a => a.tecnico_nome===t.nome);
+    let statusHtml="";
+    if(!t.ativo){ statusHtml=`<span style="color:#999">Inativo</span>`; }
+    else if(atendimento){
+      statusHtml=`<span style="color:#dc3545;font-weight:bold">
+        🔴 EM ATENDIMENTO<br>
+        Prot. ${atendimento.protocolo}<br>
+        ${atendimento.inicio_deslocamento.split("T")[0]} ${atendimento.inicio_deslocamento.split("T")[1].slice(0,5)}
+      </span>`;
+    } else {
+      statusHtml=`<span style="color:#28a745;font-weight:bold">🟢 LIVRE</span>`;
+    }
+    listaTecnicos.innerHTML+=`
       <tr>
         <td>${t.nome}</td>
         <td>${t.email}</td>
-        <td>${t.ativo ? "<span style='color:#28a745;font-weight:bold'>🟢 Ativo</span>" : "<span style='color:#999'>Inativo</span>"}</td>
+        <td>${statusHtml}</td>
         <td>
           <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
           <button class="${t.ativo?"btn-danger":"btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
@@ -164,38 +114,20 @@ async function listarTecnicos() {
           </button>
         </td>
       </tr>`;
-
-    if (t.ativo) {
-      tecnicoAtendimento.innerHTML += `<option value="${t.nome}">${t.nome}</option>`;
-    }
   });
 }
 
+/* ===== TECNICOS CRUD ===== */
 async function salvarTecnico() {
-  const dados = { nome: nomeTec.value, email: emailTec.value };
-  if (senhaTec.value) dados.senha = senhaTec.value;
-
-  if (editIdTec.value) {
-    await supabaseClient.from("tecnicos").update(dados).eq("id", editIdTec.value);
-  } else {
-    dados.ativo = true;
-    await supabaseClient.from("tecnicos").insert(dados);
-  }
-  limparTec();
-  listarTecnicos();
+  const dados={nome:nomeTec.value,email:emailTec.value};
+  if(senhaTec.value) dados.senha=senhaTec.value;
+  if(editIdTec.value){
+    await supabaseClient.from("tecnicos").update(dados).eq("id",editIdTec.value);
+  } else { dados.ativo=true; await supabaseClient.from("tecnicos").insert(dados); }
+  limparTec(); listarTecnicos();
 }
-
-function editarTecnico(id,n,e){
-  editIdTec.value=id;
-  nomeTec.value=n;
-  emailTec.value=e;
-  senhaTec.value="";
-}
-
-async function toggleTecnico(id,ativo){
-  await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);
-  listarTecnicos();
-}
+function editarTecnico(id,n,e){ editIdTec.value=id; nomeTec.value=n; emailTec.value=e; senhaTec.value=""; }
+async function toggleTecnico(id,ativo){ await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id); listarTecnicos(); }
 function limparTec(){ editIdTec.value=""; nomeTec.value=""; emailTec.value=""; senhaTec.value=""; }
 
 /* ================= AUXILIARES ================= */
@@ -218,64 +150,57 @@ async function listarAuxiliares() {
   });
 }
 async function salvarAuxiliar() {
-  const dados = { nome:nomeAux.value, local:localAux.value };
-  if (editIdAux.value) {
-    await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);
-  } else {
-    dados.ativo=true;
-    await supabaseClient.from("auxiliares").insert(dados);
-  }
-  limparAux();
-  listarAuxiliares();
+  const dados={nome:nomeAux.value,local:localAux.value};
+  if(editIdAux.value){ await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value); }
+  else { dados.ativo=true; await supabaseClient.from("auxiliares").insert(dados); }
+  limparAux(); listarAuxiliares();
 }
 function editarAux(id,n,l){ editIdAux.value=id; nomeAux.value=n; localAux.value=l; }
-async function toggleAux(id,ativo){
-  await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id);
-  listarAuxiliares();
-}
+async function toggleAux(id,ativo){ await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id); listarAuxiliares(); }
 function limparAux(){ editIdAux.value=""; nomeAux.value=""; localAux.value=""; }
 
 /* ================= ATENDIMENTOS ================= */
-async function criarAtendimento() {
-  const tecnico = document.getElementById("tecnicoAtendimento").value;
-  const tipo = document.getElementById("tipoServico").value.trim();
-  const motivo = document.getElementById("motivoAtendimento").value.trim();
-  const localizacao = document.getElementById("localizacaoAtendimento").value.trim();
-
-  if (!tecnico || !tipo || !motivo || !localizacao) {
-    return alert("Preencha todos os campos!");
-  }
-
-  const protocolo = `Prot. ${Math.floor(100000 + Math.random()*900000)}`; // Prot. aleatório
-
-  const dados = {
-    tecnico_nome: tecnico,
-    tipo_servico: tipo,
-    motivo: motivo,
-    localizacao: localizacao,
-    protocolo: protocolo,
-    status: "aberto",
-    minutos_plantao: 0,
-    inicio_deslocamento: new Date().toISOString()
-  };
-
-  try {
-    const { error } = await supabaseClient.from("atendimentos").insert(dados);
-    if (error) throw error;
+async function criarAtendimento(tecnico, tipo_servico, descricao, local_link){
+  try{
+    const protocolo = Math.floor(100000 + Math.random()*900000); // apenas número
+    const { data, error } = await supabaseClient.from("atendimentos").insert([{
+      tecnico_nome: tecnico,
+      protocolo: protocolo,
+      tipo_servico: tipo_servico,
+      descricao: descricao,
+      localizacao: local_link,
+      status: "aberto"
+    }]);
+    if(error){ console.error("Erro ao criar atendimento:",error); alert("Erro ao criar atendimento"); return; }
     alert(`Atendimento criado com sucesso! Protocolo: ${protocolo}`);
-    document.getElementById("tipoServico").value = "";
-    document.getElementById("motivoAtendimento").value = "";
-    document.getElementById("localizacaoAtendimento").value = "";
-  } catch(err) {
-    console.error("Erro ao criar atendimento:", err);
-    alert("Erro ao criar atendimento: " + JSON.stringify(err));
-  }
+    listarTecnicos();
+  } catch(e){ console.error(e); alert("Erro inesperado"); }
+}
+
+/* ================= EXCEL ================= */
+async function exportarExcel() {
+  if(!dataInicio.value||!dataFim.value) return alert("Informe o período");
+  const ini=dataInicio.value+"T00:00:00", fim=dataFim.value+"T23:59:59";
+  const { data } = await supabaseClient.from("atendimentos").select("*")
+    .gte("inicio_deslocamento",ini).lte("inicio_deslocamento",fim).gt("minutos_plantao",0);
+  const rows=(data||[]).map(a=>({
+    Data:a.inicio_deslocamento.split("T")[0],
+    Técnico:a.tecnico_nome,
+    Auxiliar:a.auxiliar_nome,
+    Protocolo:a.protocolo,
+    Início:a.inicio_deslocamento.split("T")[1].slice(0,5),
+    Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
+    Plantão:formatarPlantao(a.minutos_plantao)
+  }));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Plantao");
+  XLSX.writeFile(wb,"relatorio_plantao.xlsx");
 }
 
 /* ================= INIT ================= */
 listarTecnicos();
 listarAuxiliares();
 </script>
-
 </body>
 </html>
