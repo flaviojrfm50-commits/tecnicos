@@ -30,7 +30,7 @@ button {
 button:hover { background: #218838; }
 #atendimentoForm, #finalizarBox { display:none; }
 #statusAtendimento { font-weight: bold; }
-#localizacaoStatus { margin: 6px 0; font-weight: bold; }
+#localServicoStatus { margin: 6px 0; font-weight: bold; }
 </style>
 </head>
 
@@ -54,7 +54,7 @@ button:hover { background: #218838; }
     <span id="statusAtendimento">🟢 LIVRE</span>
   </p>
 
-  <p id="localizacaoStatus">📍 Localização: aguardando...</p>
+  <p id="localServicoStatus">📍 Local do serviço: não informado</p>
 
   <label>Auxiliar</label>
   <select id="auxiliar"></select>
@@ -71,7 +71,7 @@ button:hover { background: #218838; }
   <label>KM Inicial</label>
   <input id="kmInicial" type="number">
 
-  <button id="btnIniciar" onclick="iniciarAtendimento()">🚀 Iniciar Atendimento</button>
+  <button onclick="iniciarAtendimento()">📍 Iniciar Atendimento</button>
 
   <div id="finalizarBox">
     <label>KM Final</label>
@@ -103,11 +103,14 @@ function agoraBR() {
   return new Date().toISOString().slice(0,19);
 }
 
-/* ================= GPS (FUNCIONAL) ================= */
-async function obterLocalizacao() {
-  if (!navigator.geolocation) throw "GPS não suportado";
-
+/* ================= LOCAL DO SERVIÇO (GPS) ================= */
+function obterLocalServico() {
   return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      alert("GPS não suportado");
+      return reject();
+    }
+
     navigator.geolocation.getCurrentPosition(
       pos => {
         const loc = {
@@ -116,18 +119,18 @@ async function obterLocalizacao() {
           precisao: pos.coords.accuracy
         };
 
-        localizacaoStatus.textContent =
+        localServicoStatus.textContent =
           `📍 ${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)} (±${Math.round(loc.precisao)}m)`;
 
         resolve(loc);
       },
       () => {
-        localizacaoStatus.textContent = "❌ Permissão de localização negada";
+        alert("Permita a localização para registrar o local do serviço");
         reject();
       },
       {
         enableHighAccuracy: true,
-        timeout: 20000,
+        timeout: 15000,
         maximumAge: 0
       }
     );
@@ -165,6 +168,7 @@ async function carregarAuxiliares() {
     auxiliar.appendChild(o);
   });
 }
+
 async function carregarVeiculos() {
   const { data } = await supabaseClient.from("veiculos").select("placa,modelo");
   veiculo.innerHTML="<option value=''>— Sem veículo —</option>";
@@ -176,15 +180,13 @@ async function carregarVeiculos() {
   });
 }
 
-/* ================= INICIAR ================= */
+/* ================= INICIAR ATENDIMENTO ================= */
 async function iniciarAtendimento() {
-  localizacaoStatus.textContent = "📡 Buscando GPS...";
-
-  let loc;
+  let locServico;
   try {
-    loc = await obterLocalizacao();
+    locServico = await obterLocalServico();
   } catch {
-    return alert("Ative o GPS e permita localização");
+    return;
   }
 
   const at = {
@@ -196,8 +198,8 @@ async function iniciarAtendimento() {
     km_inicial: kmInicial.value,
     inicio_deslocamento: agoraBR(),
     status: "aberto",
-    latitude_inicio: loc.latitude,
-    longitude_inicio: loc.longitude
+    latitude_servico: locServico.latitude,
+    longitude_servico: locServico.longitude
   };
 
   await supabaseClient.from("atendimentos").insert(at);
@@ -206,25 +208,23 @@ async function iniciarAtendimento() {
   statusAtendimento.textContent = "🔴 EM ATENDIMENTO";
   finalizarBox.style.display = "block";
 
-  // 🗺 ABRE ROTA DE DESLOCAMENTO
+  // 📍 ABRE O LOCAL DO SERVIÇO NO MAPA
   window.open(
-    `https://www.google.com/maps/dir/?api=1&origin=${loc.latitude},${loc.longitude}&travelmode=driving`,
+    `https://www.google.com/maps?q=${locServico.latitude},${locServico.longitude}`,
     "_blank"
   );
 }
 
 /* ================= FINALIZAR ================= */
 async function finalizarAtendimento() {
-  const dados = {
-    fim_atendimento: agoraBR(),
-    km_final: kmFinal.value || null,
-    como_resolveu: comoResolveu.value || "Retorno à base",
-    status: "finalizado"
-  };
-
   await supabaseClient
     .from("atendimentos")
-    .update(dados)
+    .update({
+      fim_atendimento: agoraBR(),
+      km_final: kmFinal.value || null,
+      como_resolveu: comoResolveu.value || "Retorno à base",
+      status: "finalizado"
+    })
     .eq("tecnico_nome", tecnicoNome)
     .eq("status", "aberto");
 
