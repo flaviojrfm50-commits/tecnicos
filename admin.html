@@ -15,39 +15,21 @@ body {
   border-radius: 8px;
 }
 h2, h3 { text-align:center; }
-
 label { font-weight: bold; margin-top: 10px; display:block; }
-input, button {
+input, select, button {
   width: 100%;
   padding: 8px;
   margin-top: 5px;
 }
-
-button {
-  border: none;
-  cursor: pointer;
-  margin-top: 8px;
-}
-
+button { border: none; cursor: pointer; margin-top: 8px; }
 .btn-add { background:#007bff; color:#fff; }
 .btn-edit { background:#ffc107; }
 .btn-danger { background:#dc3545; color:#fff; }
 .btn-success { background:#28a745; color:#fff; }
 .btn-export { background:#28a745; color:#fff; margin-top:20px; }
-
-table {
-  width: 100%;
-  margin-top: 15px;
-  border-collapse: collapse;
-  background:#fff;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 6px;
-}
+table { width: 100%; margin-top: 15px; border-collapse: collapse; background:#fff; }
+th, td { border: 1px solid #ccc; padding: 6px; }
 th { background:#eee; }
-a { color:#007bff; text-decoration:none; }
-a:hover { text-decoration:underline; }
 </style>
 </head>
 
@@ -59,16 +41,12 @@ a:hover { text-decoration:underline; }
 <h3>Cadastro de Técnicos</h3>
 
 <input type="hidden" id="editIdTec">
-
 <label>Nome</label>
 <input id="nomeTec">
-
 <label>Email</label>
 <input id="emailTec">
-
 <label>Senha (opcional)</label>
 <input id="senhaTec" type="password">
-
 <button class="btn-add" onclick="salvarTecnico()">💾 Salvar Técnico</button>
 
 <table>
@@ -87,13 +65,10 @@ a:hover { text-decoration:underline; }
 <h3>Cadastro de Auxiliares</h3>
 
 <input type="hidden" id="editIdAux">
-
 <label>Nome</label>
 <input id="nomeAux">
-
 <label>Local / Base</label>
 <input id="localAux">
-
 <button class="btn-add" onclick="salvarAuxiliar()">💾 Salvar Auxiliar</button>
 
 <table>
@@ -108,31 +83,36 @@ a:hover { text-decoration:underline; }
 <tbody id="listaAuxiliares"></tbody>
 </table>
 
-<!-- ================= ATENDIMENTOS ================= -->
-<h3>Cadastro de Atendimentos</h3>
+<!-- ================= ATENDIMENTO ================= -->
+<h3>Criar Atendimento</h3>
 
-<input type="hidden" id="editIdAtendimento">
+<label>Técnico</label>
+<select id="tecnicoSelect"></select>
+
+<label>Auxiliar</label>
+<select id="auxiliarSelect"></select>
 
 <label>Protocolo</label>
-<input id="protocoloAtendimento">
+<input id="protocolo">
 
 <label>Tipo de Serviço</label>
 <input id="tipoServico">
 
-<label>Latitude</label>
-<input id="latitudeAtendimento" type="number" step="any">
+<label>Localização (Lat, Lng)</label>
+<input id="latitude" placeholder="Latitude">
+<input id="longitude" placeholder="Longitude">
 
-<label>Longitude</label>
-<input id="longitudeAtendimento" type="number" step="any">
+<label>KM Inicial</label>
+<input id="kmInicial" type="number">
 
-<button class="btn-add" onclick="salvarAtendimento()">💾 Salvar Atendimento</button>
+<button class="btn-add" onclick="criarAtendimento()">📝 Criar Atendimento</button>
 
 <table>
 <thead>
 <tr>
+  <th>Técnico</th>
   <th>Protocolo</th>
-  <th>Tipo de Serviço</th>
-  <th>Localização</th>
+  <th>Serviço</th>
   <th>Status</th>
   <th>Ações</th>
 </tr>
@@ -171,94 +151,46 @@ function formatarPlantao(min) {
 
 /* ================= TECNICOS ================= */
 async function listarTecnicos() {
-  const { data: tecnicos } = await supabaseClient
-    .from("tecnicos")
-    .select("*")
-    .order("nome");
-
-  const { data: atendimentos } = await supabaseClient
-    .from("atendimentos")
-    .select("tecnico_nome, protocolo, inicio_deslocamento, status")
-    .eq("status", "aberto");
-
-  listaTecnicos.innerHTML = "";
-
-  (tecnicos || []).forEach(t => {
-    const atendimento = (atendimentos || [])
-      .find(a => a.tecnico_nome === t.nome);
-
-    let statusHtml = "";
-
-    if (!t.ativo) {
-      statusHtml = `<span style="color:#999">Inativo</span>`;
-    } else if (atendimento) {
-      statusHtml = `
-        <span style="color:#dc3545;font-weight:bold">
-          🔴 EM ATENDIMENTO<br>
-          Prot. ${atendimento.protocolo}<br>
-          ${atendimento.inicio_deslocamento?.split("T")[0]}
-          ${atendimento.inicio_deslocamento?.split("T")[1]?.slice(0,5)}
-        </span>`;
-    } else {
-      statusHtml = `<span style="color:#28a745;font-weight:bold">🟢 LIVRE</span>`;
-    }
-
-    listaTecnicos.innerHTML += `
+  const { data: tecnicos } = await supabaseClient.from("tecnicos").select("*").order("nome");
+  listaTecnicos.innerHTML="";
+  tecnicoSelect.innerHTML="<option value=''>— Selecionar —</option>";
+  (tecnicos||[]).forEach(t=>{
+    listaTecnicos.innerHTML+=`
       <tr>
         <td>${t.nome}</td>
         <td>${t.email}</td>
-        <td>${statusHtml}</td>
+        <td>${t.ativo ? "Ativo":"Inativo"}</td>
         <td>
-          <button class="btn-edit"
-            onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">
-            Editar
-          </button>
-          <button class="${t.ativo ? "btn-danger" : "btn-success"}"
-            onclick="toggleTecnico('${t.id}',${t.ativo})">
-            ${t.ativo ? "Desativar" : "Ativar"}
+          <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
+          <button class="${t.ativo?"btn-danger":"btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
+            ${t.ativo?"Desativar":"Ativar"}
           </button>
         </td>
       </tr>`;
+    if(t.ativo) tecnicoSelect.innerHTML+=`<option value="${t.nome}">${t.nome}</option>`;
   });
 }
 
 async function salvarTecnico() {
-  const dados = { nome: nomeTec.value, email: emailTec.value };
-  if (senhaTec.value) dados.senha = senhaTec.value;
-
-  if (editIdTec.value) {
-    await supabaseClient.from("tecnicos").update(dados).eq("id", editIdTec.value);
-  } else {
-    dados.ativo = true;
+  const dados={nome:nomeTec.value,email:emailTec.value};
+  if(senhaTec.value) dados.senha=senhaTec.value;
+  if(editIdTec.value){
+    await supabaseClient.from("tecnicos").update(dados).eq("id",editIdTec.value);
+  }else{
+    dados.ativo=true;
     await supabaseClient.from("tecnicos").insert(dados);
   }
-  limparTec();
-  listarTecnicos();
+  limparTec(); listarTecnicos();
 }
 
-function editarTecnico(id,n,e){
-  editIdTec.value=id;
-  nomeTec.value=n;
-  emailTec.value=e;
-  senhaTec.value="";
-}
-
-async function toggleTecnico(id,ativo){
-  await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);
-  listarTecnicos();
-}
-
-function limparTec(){
-  editIdTec.value="";
-  nomeTec.value="";
-  emailTec.value="";
-  senhaTec.value="";
-}
+function editarTecnico(id,n,e){ editIdTec.value=id; nomeTec.value=n; emailTec.value=e; senhaTec.value=""; }
+async function toggleTecnico(id,ativo){ await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id); listarTecnicos(); }
+function limparTec(){ editIdTec.value=""; nomeTec.value=""; emailTec.value=""; senhaTec.value=""; }
 
 /* ================= AUXILIARES ================= */
-async function listarAuxiliares() {
+async function listarAuxiliares(){
   const { data } = await supabaseClient.from("auxiliares").select("*").order("nome");
-  listaAuxiliares.innerHTML="";
+  listaAuxiliares.innerHTML=""; auxiliarSelect.innerHTML="<option value=''>— Selecionar —</option>";
   (data||[]).forEach(a=>{
     listaAuxiliares.innerHTML+=`
       <tr>
@@ -267,91 +199,96 @@ async function listarAuxiliares() {
         <td>${a.ativo?"Ativo":"Inativo"}</td>
         <td>
           <button class="btn-edit" onclick="editarAux('${a.id}','${a.nome}','${a.local||""}')">Editar</button>
-          <button class="${a.ativo?"btn-danger":"btn-success"}"
-            onclick="toggleAux('${a.id}',${a.ativo})">
+          <button class="${a.ativo?"btn-danger":"btn-success"}" onclick="toggleAux('${a.id}',${a.ativo})">
             ${a.ativo?"Desativar":"Ativar"}
           </button>
         </td>
       </tr>`;
+    if(a.ativo) auxiliarSelect.innerHTML+=`<option value="${a.nome}">${a.nome}</option>`;
   });
 }
 
-async function salvarAuxiliar() {
-  const dados = { nome:nomeAux.value, local:localAux.value };
-  if (editIdAux.value) {
-    await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);
-  } else {
-    dados.ativo=true;
-    await supabaseClient.from("auxiliares").insert(dados);
-  }
-  limparAux();
-  listarAuxiliares();
+async function salvarAuxiliar(){ 
+  const dados={nome:nomeAux.value,local:localAux.value};
+  if(editIdAux.value){ await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);}
+  else {dados.ativo=true; await supabaseClient.from("auxiliares").insert(dados);}
+  limparAux(); listarAuxiliares();
 }
 
 function editarAux(id,n,l){ editIdAux.value=id; nomeAux.value=n; localAux.value=l; }
-async function toggleAux(id,ativo){
-  await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id);
-  listarAuxiliares();
-}
+async function toggleAux(id,ativo){ await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id); listarAuxiliares(); }
 function limparAux(){ editIdAux.value=""; nomeAux.value=""; localAux.value=""; }
 
 /* ================= ATENDIMENTOS ================= */
-async function listarAtendimentos() {
-  const { data } = await supabaseClient.from("atendimentos").select("*").order("protocolo");
+async function listarAtendimentos(){
+  const { data } = await supabaseClient.from("atendimentos").select("*").order("inicio_deslocamento","desc");
   listaAtendimentos.innerHTML="";
   (data||[]).forEach(a=>{
-    const status = a.status==="aberto" ? `<span style="color:#dc3545;font-weight:bold">ABERTO</span>` : `<span style="color:#28a745;font-weight:bold">FINALIZADO</span>`;
-    const linkMapa = a.latitude_servico && a.longitude_servico ? `<a href="https://www.google.com/maps?q=${a.latitude_servico},${a.longitude_servico}" target="_blank">Ver Mapa</a>` : "";
     listaAtendimentos.innerHTML+=`
       <tr>
+        <td>${a.tecnico_nome}</td>
         <td>${a.protocolo}</td>
-        <td>${a.motivo}</td>
-        <td>${linkMapa}</td>
-        <td>${status}</td>
+        <td>${a.tipo_servico}</td>
+        <td>${a.status}</td>
         <td>
-          <button class="btn-edit" onclick="editarAtendimento('${a.id}','${a.protocolo}','${a.motivo}','${a.latitude_servico||""}','${a.longitude_servico||""}')">Editar</button>
+          ${a.status==="aberto"?`<button class="btn-edit" onclick="finalizarAtendimento('${a.id}')">Finalizar</button>`:"-"}
         </td>
       </tr>`;
   });
 }
 
-async function salvarAtendimento() {
-  const dados = {
-    protocolo: protocoloAtendimento.value,
-    motivo: tipoServico.value,
-    latitude_servico: latitudeAtendimento.value || null,
-    longitude_servico: longitudeAtendimento.value || null,
-    status: "aberto"
+async function criarAtendimento(){
+  const dados={
+    tecnico_nome: tecnicoSelect.value || null,
+    auxiliar_nome: auxiliarSelect.value || null,
+    protocolo: protocolo.value || null,
+    tipo_servico: tipoServico.value || null,
+    latitude_inicio: latitude.value || null,
+    longitude_inicio: longitude.value || null,
+    km_inicial: kmInicial.value || null,
+    status:"aberto",
+    inicio_deslocamento: new Date().toISOString()
   };
-
-  if (editIdAtendimento.value) {
-    await supabaseClient.from("atendimentos").update(dados).eq("id",editIdAtendimento.value);
-  } else {
-    await supabaseClient.from("atendimentos").insert(dados);
-  }
-  limparAtendimento();
+  const { error } = await supabaseClient.from("atendimentos").insert(dados);
+  if(error) return alert(JSON.stringify(error));
+  protocolo.value=""; tipoServico.value=""; latitude.value=""; longitude.value=""; kmInicial.value="";
   listarAtendimentos();
 }
 
-function editarAtendimento(id,protocolo,motivo,lat,lon){
-  editIdAtendimento.value=id;
-  protocoloAtendimento.value=protocolo;
-  tipoServico.value=motivo;
-  latitudeAtendimento.value=lat;
-  longitudeAtendimento.value=lon;
+/* ================= FINALIZAR ATENDIMENTO ================= */
+async function finalizarAtendimento(id){
+  const kmFinalVal = prompt("Informe KM final:");
+  const comoResolveu = prompt("Descreva como resolveu:");
+  const fim = new Date().toISOString();
+  const { data: atend } = await supabaseClient.from("atendimentos").select("*").eq("id",id).single();
+  const minutosPlantao = calcularMinutosPlantao(atend.inicio_deslocamento,fim);
+  await supabaseClient.from("atendimentos").update({
+    status:"finalizado",
+    km_final: kmFinalVal || null,
+    km_total: kmFinalVal ? kmFinalVal - atend.km_inicial : null,
+    como_resolveu: comoResolveu || "Retorno à base",
+    fim_atendimento: fim,
+    minutos_plantao: minutosPlantao
+  }).eq("id",id);
+  listarAtendimentos();
 }
 
-function limparAtendimento(){
-  editIdAtendimento.value="";
-  protocoloAtendimento.value="";
-  tipoServico.value="";
-  latitudeAtendimento.value="";
-  longitudeAtendimento.value="";
+/* ================= PLANTÃO ================= */
+function calcularMinutosPlantao(inicioISO, fimISO) {
+  let atual = new Date(inicioISO);
+  const fim = new Date(fimISO);
+  let minutos = 0;
+  while(atual<fim){
+    const h = atual.getHours();
+    if(h>=18 || h<8) minutos++;
+    atual.setMinutes(atual.getMinutes()+1);
+  }
+  return minutos;
 }
 
-/* ================= RELATORIO ================= */
-async function exportarExcel() {
-  if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
+/* ================= EXPORTAR EXCEL ================= */
+async function exportarExcel(){
+  if(!dataInicio.value || !dataFim.value) return alert("Informe o período");
   const ini=dataInicio.value+"T00:00:00";
   const fim=dataFim.value+"T23:59:59";
   const { data } = await supabaseClient.from("atendimentos")
@@ -361,17 +298,15 @@ async function exportarExcel() {
     .gt("minutos_plantao",0);
 
   const rows=(data||[]).map(a=>({
-    Data:a.inicio_deslocamento?.split("T")[0],
+    Data:a.inicio_deslocamento.split("T")[0],
     Técnico:a.tecnico_nome,
     Auxiliar:a.auxiliar_nome,
     Protocolo:a.protocolo,
-    TipoServico:a.motivo,
-    Localizacao:a.latitude_servico && a.longitude_servico ? `https://www.google.com/maps?q=${a.latitude_servico},${a.longitude_servico}` : "",
-    Início:a.inicio_deslocamento?.split("T")[1]?.slice(0,5)||"",
+    Serviço:a.tipo_servico,
+    Início:a.inicio_deslocamento.split("T")[1].slice(0,5),
     Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
     Plantão:formatarPlantao(a.minutos_plantao)
   }));
-
   const ws=XLSX.utils.json_to_sheet(rows);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Plantao");
