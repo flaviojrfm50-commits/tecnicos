@@ -8,7 +8,7 @@
 body { font-family: Arial; max-width: 1000px; margin: 20px auto; background:#f4f4f4; padding:20px; border-radius:8px;}
 h2,h3{text-align:center;}
 label{font-weight:bold;margin-top:10px;display:block;}
-input,textarea,button{width:100%;padding:8px;margin-top:5px;}
+input,textarea,select,button{width:100%;padding:8px;margin-top:5px;}
 button{border:none;cursor:pointer;margin-top:8px;}
 .btn-add{background:#007bff;color:#fff;}
 .btn-edit{background:#ffc107;}
@@ -21,6 +21,7 @@ th{background:#eee;}
 </style>
 </head>
 <body>
+
 <h2>Administração</h2>
 
 <!-- ================= TECNICOS ================= -->
@@ -57,8 +58,10 @@ th{background:#eee;}
 <label>Protocolo</label><input id="protocoloAtendimento" placeholder="Somente números">
 <label>Tipo de Serviço</label><input id="tipoServico">
 <label>Descrição</label><textarea id="descricaoAtendimento"></textarea>
-<label>Localização (Google Maps link)</label><input id="localizacaoAtendimento" placeholder="https://www.google.com/maps/place/...">
-<label>Técnico</label><input id="tecnicoAtendimento" placeholder="Nome do técnico responsável">
+<label>Localização (Google Maps)</label><input id="localizacaoAtendimento">
+<label>Técnico Responsável</label>
+<select id="tecnicoAtendimento"></select>
+
 <button class="btn-add" onclick="criarAtendimento()">💾 Criar Atendimento</button>
 
 <!-- ================= RELATORIO ================= -->
@@ -69,6 +72,7 @@ th{background:#eee;}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <script>
 const { createClient } = supabase;
 const supabaseClient = createClient(
@@ -78,36 +82,52 @@ const supabaseClient = createClient(
 
 /* ================= UTIL ================= */
 function formatarPlantao(min){
-  if(min===null||min===undefined) return "00h00min";
-  const h=Math.floor(min/60); const m=min%60;
+  if(!min) return "00h00min";
+  const h=Math.floor(min/60), m=min%60;
   return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}min`;
 }
 
 /* ================= TECNICOS ================= */
 async function listarTecnicos(){
-  const {data:tecnicos} = await supabaseClient.from("tecnicos").select("*").order("nome");
+  const {data}=await supabaseClient.from("tecnicos").select("*").order("nome");
   listaTecnicos.innerHTML="";
-  (tecnicos||[]).forEach(t=>{
-    listaTecnicos.innerHTML+=`<tr>
+  (data||[]).forEach(t=>{
+    listaTecnicos.innerHTML+=`
+    <tr>
       <td>${t.nome}</td>
       <td>${t.email}</td>
-      <td>${t.ativo?"🟢 LIVRE":"🔴 INATIVO"}</td>
+      <td>${t.ativo?"🟢 ATIVO":"🔴 INATIVO"}</td>
       <td>
         <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
-        <button class="${t.ativo?"btn-danger":"btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">${t.ativo?"Desativar":"Ativar"}</button>
+        <button class="${t.ativo?"btn-danger":"btn-success"}"
+          onclick="toggleTecnico('${t.id}',${t.ativo})">
+          ${t.ativo?"Desativar":"Ativar"}
+        </button>
       </td>
     </tr>`;
   });
 }
+
 async function salvarTecnico(){
   const dados={nome:nomeTec.value,email:emailTec.value};
   if(senhaTec.value) dados.senha=senhaTec.value;
-  if(editIdTec.value){await supabaseClient.from("tecnicos").update(dados).eq("id",editIdTec.value);}
-  else{dados.ativo=true;await supabaseClient.from("tecnicos").insert(dados);}
-  limparTec(); listarTecnicos();
+
+  if(editIdTec.value){
+    await supabaseClient.from("tecnicos").update(dados).eq("id",editIdTec.value);
+  }else{
+    dados.ativo=true;
+    await supabaseClient.from("tecnicos").insert(dados);
+  }
+  limparTec(); listarTecnicos(); carregarTecnicosSelect();
 }
-function editarTecnico(id,n,e){editIdTec.value=id;nomeTec.value=n;emailTec.value=e;senhaTec.value="";}
-async function toggleTecnico(id,ativo){await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);listarTecnicos();}
+
+function editarTecnico(id,n,e){
+  editIdTec.value=id; nomeTec.value=n; emailTec.value=e; senhaTec.value="";
+}
+async function toggleTecnico(id,ativo){
+  await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);
+  listarTecnicos(); carregarTecnicosSelect();
+}
 function limparTec(){editIdTec.value="";nomeTec.value="";emailTec.value="";senhaTec.value="";}
 
 /* ================= AUXILIARES ================= */
@@ -115,57 +135,91 @@ async function listarAuxiliares(){
   const {data}=await supabaseClient.from("auxiliares").select("*").order("nome");
   listaAuxiliares.innerHTML="";
   (data||[]).forEach(a=>{
-    listaAuxiliares.innerHTML+=`<tr>
+    listaAuxiliares.innerHTML+=`
+    <tr>
       <td>${a.nome}</td>
       <td>${a.local||""}</td>
       <td>${a.ativo?"Ativo":"Inativo"}</td>
       <td>
         <button class="btn-edit" onclick="editarAux('${a.id}','${a.nome}','${a.local||""}')">Editar</button>
-        <button class="${a.ativo?"btn-danger":"btn-success"}" onclick="toggleAux('${a.id}',${a.ativo})">${a.ativo?"Desativar":"Ativar"}</button>
+        <button class="${a.ativo?"btn-danger":"btn-success"}"
+          onclick="toggleAux('${a.id}',${a.ativo})">
+          ${a.ativo?"Desativar":"Ativar"}
+        </button>
       </td>
     </tr>`;
   });
 }
+
 async function salvarAuxiliar(){
   const dados={nome:nomeAux.value,local:localAux.value};
-  if(editIdAux.value){await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);}
-  else{dados.ativo=true;await supabaseClient.from("auxiliares").insert(dados);}
+  if(editIdAux.value){
+    await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);
+  }else{
+    dados.ativo=true;
+    await supabaseClient.from("auxiliares").insert(dados);
+  }
   limparAux(); listarAuxiliares();
 }
+
 function editarAux(id,n,l){editIdAux.value=id;nomeAux.value=n;localAux.value=l;}
 async function toggleAux(id,ativo){await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id);listarAuxiliares();}
 function limparAux(){editIdAux.value="";nomeAux.value="";localAux.value="";}
 
+/* ================= TECNICOS SELECT ================= */
+async function carregarTecnicosSelect(){
+  const {data}=await supabaseClient
+    .from("tecnicos")
+    .select("nome")
+    .eq("ativo",true)
+    .order("nome");
+
+  tecnicoAtendimento.innerHTML="<option value=''>Selecione o técnico</option>";
+  (data||[]).forEach(t=>{
+    const o=document.createElement("option");
+    o.value=t.nome;
+    o.textContent=t.nome;
+    tecnicoAtendimento.appendChild(o);
+  });
+}
+
 /* ================= CRIAR ATENDIMENTO ================= */
 async function criarAtendimento(){
-  const protocolo=protocoloAtendimento.value.trim();
-  if(!protocolo) return alert("Informe o protocolo!");
-  const tipo=tipoServico.value.trim();
-  const descricao=descricaoAtendimento.value.trim();
-  const localizacao=localizacaoAtendimento.value.trim();
-  const tecnico=tecnicoAtendimento.value.trim();
+  if(!protocoloAtendimento.value || !tecnicoAtendimento.value)
+    return alert("Informe protocolo e técnico");
+
   const dados={
-    protocolo:parseInt(protocolo),
-    tipo_servico:tipo||null,
-    descricao:descricao||null,
-    localizacao:localizacao||null,
-    tecnico_nome:tecnico||null,
+    protocolo:Number(protocoloAtendimento.value),
+    tipo_servico:tipoServico.value||null,
+    descricao:descricaoAtendimento.value||null,
+    localizacao:localizacaoAtendimento.value||null,
+    tecnico_nome:tecnicoAtendimento.value,
     status:"aberto",
     minutos_plantao:0
   };
-  try{
-    const {data,error}=await supabaseClient.from("atendimentos").insert([dados]);
-    if(error) throw error;
-    alert("Atendimento criado com sucesso!");
-    protocoloAtendimento.value=""; tipoServico.value=""; descricaoAtendimento.value=""; localizacaoAtendimento.value=""; tecnicoAtendimento.value="";
-  }catch(e){console.error("Erro ao criar atendimento:",e);alert("Erro ao criar atendimento: "+e.message);}
+
+  const {error}=await supabaseClient.from("atendimentos").insert([dados]);
+  if(error) return alert("Erro ao criar atendimento");
+
+  alert("Atendimento criado com sucesso!");
+  protocoloAtendimento.value="";
+  tipoServico.value="";
+  descricaoAtendimento.value="";
+  localizacaoAtendimento.value="";
+  tecnicoAtendimento.value="";
 }
 
 /* ================= EXPORTAR EXCEL ================= */
 async function exportarExcel(){
   if(!dataInicio.value||!dataFim.value) return alert("Informe o período");
-  const ini=dataInicio.value+"T00:00:00"; const fim=dataFim.value+"T23:59:59";
-  const {data}=await supabaseClient.from("atendimentos").select("*").gte("inicio_deslocamento",ini).lte("inicio_deslocamento",fim).gt("minutos_plantao",0);
+
+  const {data}=await supabaseClient
+    .from("atendimentos")
+    .select("*")
+    .gte("inicio_deslocamento",dataInicio.value+"T00:00:00")
+    .lte("inicio_deslocamento",dataFim.value+"T23:59:59")
+    .gt("minutos_plantao",0);
+
   const rows=(data||[]).map(a=>({
     Data:a.inicio_deslocamento?.split("T")[0]||"",
     Técnico:a.tecnico_nome,
@@ -174,6 +228,7 @@ async function exportarExcel(){
     Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
     Plantão:formatarPlantao(a.minutos_plantao)
   }));
+
   const ws=XLSX.utils.json_to_sheet(rows);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Plantao");
@@ -183,6 +238,7 @@ async function exportarExcel(){
 /* ================= INIT ================= */
 listarTecnicos();
 listarAuxiliares();
+carregarTecnicosSelect();
 </script>
 </body>
 </html>
