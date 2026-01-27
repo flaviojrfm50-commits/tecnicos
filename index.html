@@ -29,11 +29,8 @@ button {
 }
 button:hover { background: #218838; }
 #atendimentoForm, #finalizarBox { display:none; }
-#statusAtendimento {
-  font-weight: bold;
-  font-size: 16px;
-  margin: 8px 0;
-}
+#statusAtendimento { font-weight: bold; }
+#localizacaoStatus { margin: 6px 0; font-weight: bold; }
 </style>
 </head>
 
@@ -56,6 +53,8 @@ button:hover { background: #218838; }
     Técnico: <strong id="tecnicoLogado"></strong><br>
     <span id="statusAtendimento">🟢 LIVRE</span>
   </p>
+
+  <p id="localizacaoStatus">📍 Localização: aguardando...</p>
 
   <label>Auxiliar</label>
   <select id="auxiliar"></select>
@@ -95,45 +94,44 @@ const supabaseClient = createClient(
   "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv"
 );
 
-/* ================= TELEGRAM ================= */
-const TELEGRAM_TOKEN = "SEU_TOKEN";
-const TELEGRAM_CHAT_ID = "SEU_CHAT_ID";
-
 /* ================= VARIÁVEIS ================= */
 let tecnicoNome = "";
 let atendimentoAtual = null;
 
-/* ================= INTERNET ================= */
-function online() {
-  return navigator.onLine;
-}
-window.addEventListener("online", sincronizarPendentes);
-
 /* ================= DATA ================= */
 function agoraBR() {
-  const d = new Date();
-  return d.toISOString().slice(0,19);
+  return new Date().toISOString().slice(0,19);
 }
 
-/* ================= GPS ================= */
-function obterLocalizacao() {
+/* ================= GPS (FUNCIONAL) ================= */
+async function obterLocalizacao() {
+  if (!navigator.geolocation) throw "GPS não suportado";
+
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
-      pos => resolve({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude
-      }),
-      () => reject(),
-      { enableHighAccuracy: true, timeout: 10000 }
+      pos => {
+        const loc = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          precisao: pos.coords.accuracy
+        };
+
+        localizacaoStatus.textContent =
+          `📍 ${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)} (±${Math.round(loc.precisao)}m)`;
+
+        resolve(loc);
+      },
+      () => {
+        localizacaoStatus.textContent = "❌ Permissão de localização negada";
+        reject();
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
+      }
     );
   });
-}
-
-/* ================= OFFLINE ================= */
-function salvarOffline(at) {
-  const fila = JSON.parse(localStorage.getItem("filaAtendimentos") || "[]");
-  fila.push(at);
-  localStorage.setItem("filaAtendimentos", JSON.stringify(fila));
 }
 
 /* ================= LOGIN ================= */
@@ -180,9 +178,14 @@ async function carregarVeiculos() {
 
 /* ================= INICIAR ================= */
 async function iniciarAtendimento() {
+  localizacaoStatus.textContent = "📡 Buscando GPS...";
+
   let loc;
-  try { loc = await obterLocalizacao(); }
-  catch { return alert("Ative o GPS"); }
+  try {
+    loc = await obterLocalizacao();
+  } catch {
+    return alert("Ative o GPS e permita localização");
+  }
 
   const at = {
     tecnico_nome: tecnicoNome,
@@ -197,57 +200,35 @@ async function iniciarAtendimento() {
     longitude_inicio: loc.longitude
   };
 
-  if (!online()) {
-    at.offline = true;
-    salvarOffline(at);
-    abrirMapa(loc);
-    atendimentoAtual = at;
-    finalizarBox.style.display="block";
-    return alert("Sem internet. Salvo offline.");
-  }
-
   await supabaseClient.from("atendimentos").insert(at);
-  abrirMapa(loc);
+
   atendimentoAtual = at;
-  finalizarBox.style.display="block";
+  statusAtendimento.textContent = "🔴 EM ATENDIMENTO";
+  finalizarBox.style.display = "block";
+
+  // 🗺 ABRE ROTA DE DESLOCAMENTO
+  window.open(
+    `https://www.google.com/maps/dir/?api=1&origin=${loc.latitude},${loc.longitude}&travelmode=driving`,
+    "_blank"
+  );
 }
 
 /* ================= FINALIZAR ================= */
 async function finalizarAtendimento() {
-  atendimentoAtual.fim_atendimento = agoraBR();
-  atendimentoAtual.km_final = kmFinal.value || null;
-  atendimentoAtual.como_resolveu = comoResolveu.value || "Retorno à base";
-  atendimentoAtual.status = "finalizado";
-
-  if (atendimentoAtual.offline) {
-    salvarOffline(atendimentoAtual);
-    return location.reload();
-  }
+  const dados = {
+    fim_atendimento: agoraBR(),
+    km_final: kmFinal.value || null,
+    como_resolveu: comoResolveu.value || "Retorno à base",
+    status: "finalizado"
+  };
 
   await supabaseClient
     .from("atendimentos")
-    .update(atendimentoAtual)
+    .update(dados)
     .eq("tecnico_nome", tecnicoNome)
-    .eq("status","aberto");
+    .eq("status", "aberto");
 
   location.reload();
-}
-
-/* ================= MAPA ================= */
-function abrirMapa(loc) {
-  window.open(`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`, "_blank");
-}
-
-/* ================= SINCRONIZAR ================= */
-async function sincronizarPendentes() {
-  const fila = JSON.parse(localStorage.getItem("filaAtendimentos") || "[]");
-  if (!fila.length) return;
-
-  for (const at of fila) {
-    await supabaseClient.from("atendimentos").insert(at);
-  }
-  localStorage.removeItem("filaAtendimentos");
-  alert("Atendimentos offline sincronizados!");
 }
 </script>
 
