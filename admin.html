@@ -1,326 +1,212 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<title>Administração</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Painel Técnico - Atendimento</title>
 <style>
-body {
-  font-family: Arial;
-  max-width: 1000px;
-  margin: 20px auto;
-  background: #f4f4f4;
-  padding: 20px;
-  border-radius: 8px;
-}
-h2, h3 { text-align:center; }
-
-label { font-weight: bold; margin-top: 10px; display:block; }
-input, select, button {
-  width: 100%;
-  padding: 8px;
-  margin-top: 5px;
-}
-
-button {
-  border: none;
-  cursor: pointer;
-  margin-top: 8px;
-}
-
-.btn-add { background:#007bff; color:#fff; }
-.btn-edit { background:#ffc107; }
-.btn-danger { background:#dc3545; color:#fff; }
-.btn-success { background:#28a745; color:#fff; }
-.btn-export { background:#28a745; color:#fff; margin-top:20px; }
-
-table {
-  width: 100%;
-  margin-top: 15px;
-  border-collapse: collapse;
-  background:#fff;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 6px;
-}
-th { background:#eee; }
+  body { font-family: Arial; max-width: 600px; margin: 20px auto; background:#f9f9f9; padding: 20px; border-radius: 8px; }
+  h2 { text-align:center; }
+  label { display:block; margin-top:15px; font-weight:bold; }
+  input, textarea, select, button { width: 100%; padding:8px; margin-top:5px; }
+  button { background:#28a745; border:none; color:#fff; font-weight:bold; cursor:pointer; border-radius:4px; margin-top:15px; }
+  button[disabled] { background:#ccc; cursor:not-allowed; }
+  .link-maps { margin-top:5px; font-size: 0.9em; }
+  .status { margin-top:10px; font-weight:bold; color: #dc3545; }
+  .hidden { display:none; }
 </style>
 </head>
-
 <body>
 
-<h2>Administração</h2>
+<h2>Painel Técnico - Atendimento</h2>
 
-<!-- ================= TECNICOS ================= -->
-<h3>Cadastro de Técnicos</h3>
-
-<input type="hidden" id="editIdTec">
-
-<label>Nome</label>
-<input id="nomeTec">
-
-<label>Email</label>
-<input id="emailTec">
-
-<label>Senha (opcional)</label>
-<input id="senhaTec" type="password">
-
-<button class="btn-add" onclick="salvarTecnico()">💾 Salvar Técnico</button>
-
-<table>
-<thead>
-<tr>
-  <th>Nome</th>
-  <th>Email</th>
-  <th>Status</th>
-  <th>Ações</th>
-</tr>
-</thead>
-<tbody id="listaTecnicos"></tbody>
-</table>
-
-<!-- ================= AUXILIARES ================= -->
-<h3>Cadastro de Auxiliares</h3>
-
-<input type="hidden" id="editIdAux">
-
-<label>Nome</label>
-<input id="nomeAux">
-
-<label>Local / Base</label>
-<input id="localAux">
-
-<button class="btn-add" onclick="salvarAuxiliar()">💾 Salvar Auxiliar</button>
-
-<table>
-<thead>
-<tr>
-  <th>Nome</th>
-  <th>Local</th>
-  <th>Status</th>
-  <th>Ações</th>
-</tr>
-</thead>
-<tbody id="listaAuxiliares"></tbody>
-</table>
-
-<!-- ================= ATENDIMENTOS ================= -->
-<h3>Criar Atendimento</h3>
-
+<!-- Exemplo: preencha aqui os dados do técnico -->
 <label>Técnico</label>
-<select id="tecnicoSelect"></select>
+<input type="text" id="nomeTecnico" placeholder="Nome do Técnico" />
 
-<label>Auxiliar</label>
-<select id="auxiliarSelect"></select>
+<label>Protocolo (preenchido automaticamente ou por sistema)</label>
+<input type="text" id="protocolo" placeholder="Protocolo" />
 
-<label>Protocolo</label>
-<input id="protocolo">
+<label>Tipo de Serviço <small>(obrigatório)</small></label>
+<select id="tipoServico">
+  <option value="">-- Selecione o tipo de serviço --</option>
+  <option value="Ampliação FTTH">Ampliação FTTH</option>
+  <option value="Manutenção">Manutenção</option>
+  <option value="Instalação">Instalação</option>
+  <option value="Reparo">Reparo</option>
+  <!-- outros tipos -->
+</select>
 
-<label>Tipo de Serviço</label>
-<input id="tipoServico">
+<label>Localização (latitude, longitude)</label>
+<input type="text" id="latitude" placeholder="Latitude" />
+<input type="text" id="longitude" placeholder="Longitude" />
+<div class="link-maps" id="mapLink"></div>
 
-<label>Latitude</label>
-<input id="latitude" type="number" step="0.000001">
+<button id="btnIniciar">Iniciar Atendimento</button>
 
-<label>Longitude</label>
-<input id="longitude" type="number" step="0.000001">
+<div id="finalizarSection" class="hidden">
+  <h3>Finalizar Atendimento</h3>
+  <label>KM final <small>(obrigatório)</small></label>
+  <input type="number" id="kmFinal" min="0" placeholder="KM final" />
+  
+  <label>Relato de resolução <small>(obrigatório)</small></label>
+  <textarea id="relatoResolucao" rows="4" placeholder="Descreva como resolveu o atendimento"></textarea>
+  
+  <button id="btnFinalizar">Finalizar Atendimento</button>
+</div>
 
-<button class="btn-add" onclick="criarAtendimento()">💾 Criar Atendimento</button>
-
-<!-- ================= RELATORIO ================= -->
-<h3>Relatório de Plantão</h3>
-
-<label>Data início</label>
-<input type="date" id="dataInicio">
-
-<label>Data fim</label>
-<input type="date" id="dataFim">
-
-<button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
+<div class="status" id="statusMsg"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
 <script>
-const { createClient } = supabase;
-const supabaseClient = createClient(
-  "https://bzgvbghxmebdjqnlakbj.supabase.co",
-  "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv"
-);
+  const supabaseUrl = "https://bzgvbghxmebdjqnlakbj.supabase.co";
+  const supabaseKey = "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv";
+  const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-/* ================= UTIL ================= */
-function formatarPlantao(min) {
-  if (min === null || min === undefined) return "00h00min";
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}min`;
-}
+  let atendimentoId = null;
 
-/* ================= TECNICOS ================= */
-async function listarTecnicos() {
-  const { data: tecnicos } = await supabaseClient
-    .from("tecnicos")
-    .select("*")
-    .order("nome");
+  const nomeTecnico = document.getElementById("nomeTecnico");
+  const protocolo = document.getElementById("protocolo");
+  const tipoServico = document.getElementById("tipoServico");
+  const latitude = document.getElementById("latitude");
+  const longitude = document.getElementById("longitude");
+  const mapLink = document.getElementById("mapLink");
+  const btnIniciar = document.getElementById("btnIniciar");
 
-  listaTecnicos.innerHTML = "";
-  tecnicoSelect.innerHTML = "<option value=''>Selecione</option>";
+  const finalizarSection = document.getElementById("finalizarSection");
+  const kmFinal = document.getElementById("kmFinal");
+  const relatoResolucao = document.getElementById("relatoResolucao");
+  const btnFinalizar = document.getElementById("btnFinalizar");
+  const statusMsg = document.getElementById("statusMsg");
 
-  (tecnicos || []).forEach(t => {
-    listaTecnicos.innerHTML += `
-      <tr>
-        <td>${t.nome}</td>
-        <td>${t.email}</td>
-        <td>${t.ativo ? "Ativo" : "Inativo"}</td>
-        <td>
-          <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
-          <button class="${t.ativo ? "btn-danger" : "btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
-            ${t.ativo ? "Desativar" : "Ativar"}
-          </button>
-        </td>
-      </tr>`;
-    if(t.ativo) tecnicoSelect.innerHTML += `<option value="${t.nome}">${t.nome}</option>`;
+  // Atualiza o link do Google Maps conforme latitude e longitude digitados
+  function atualizarLinkMapa() {
+    const lat = latitude.value.trim();
+    const lon = longitude.value.trim();
+    if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
+      mapLink.innerHTML = `<a href="https://www.google.com/maps/place/${lat}+${lon}" target="_blank" rel="noopener">Ver Localização no Google Maps</a>`;
+    } else {
+      mapLink.innerHTML = "";
+    }
+  }
+  latitude.addEventListener("input", atualizarLinkMapa);
+  longitude.addEventListener("input", atualizarLinkMapa);
+
+  btnIniciar.addEventListener("click", async () => {
+    statusMsg.textContent = "";
+    // Valida campos obrigatórios
+    if (!nomeTecnico.value.trim()) {
+      alert("Informe o nome do técnico.");
+      return;
+    }
+    if (!protocolo.value.trim()) {
+      alert("Informe o protocolo.");
+      return;
+    }
+    if (!tipoServico.value) {
+      alert("Selecione o tipo de serviço.");
+      return;
+    }
+    if (!latitude.value.trim() || isNaN(latitude.value.trim())) {
+      alert("Informe uma latitude válida.");
+      return;
+    }
+    if (!longitude.value.trim() || isNaN(longitude.value.trim())) {
+      alert("Informe uma longitude válida.");
+      return;
+    }
+
+    // Monta objeto de inserção com todos os campos obrigatórios (incluindo motivo)
+    const dadosAtendimento = {
+      tecnico_nome: nomeTecnico.value.trim(),
+      protocolo: protocolo.value.trim(),
+      tipo_servico: tipoServico.value,
+      latitude_inicio: parseFloat(latitude.value.trim()),
+      longitude_inicio: parseFloat(longitude.value.trim()),
+      inicio_deslocamento: new Date().toISOString(),
+      status: "aberto",
+      motivo: `Serviço iniciado: ${tipoServico.value}`, // Exemplo de motivo inicial, pode ajustar
+      minutos_plantao: 0
+    };
+
+    // Insere no banco
+    const { data, error } = await supabase
+      .from("atendimentos")
+      .insert([dadosAtendimento]);
+
+    if (error) {
+      statusMsg.textContent = "Erro ao criar atendimento: " + error.message;
+      statusMsg.style.color = "#dc3545";
+      return;
+    }
+
+    atendimentoId = data[0].id;
+    statusMsg.textContent = "Atendimento iniciado com sucesso!";
+    statusMsg.style.color = "#28a745";
+
+    // Exibe seção para finalizar atendimento
+    finalizarSection.classList.remove("hidden");
+
+    // Desabilita os campos de início para evitar editar depois de iniciado
+    nomeTecnico.disabled = true;
+    protocolo.disabled = true;
+    tipoServico.disabled = true;
+    latitude.disabled = true;
+    longitude.disabled = true;
+    btnIniciar.disabled = true;
   });
-}
 
-async function salvarTecnico() {
-  const dados = { nome: nomeTec.value, email: emailTec.value };
-  if(senhaTec.value) dados.senha = senhaTec.value;
+  btnFinalizar.addEventListener("click", async () => {
+    statusMsg.textContent = "";
 
-  if(editIdTec.value) {
-    await supabaseClient.from("tecnicos").update(dados).eq("id", editIdTec.value);
-  } else {
-    dados.ativo = true;
-    await supabaseClient.from("tecnicos").insert(dados);
-  }
-  limparTec();
-  listarTecnicos();
-}
+    if (!atendimentoId) {
+      alert("Nenhum atendimento iniciado.");
+      return;
+    }
+    if (!kmFinal.value.trim() || isNaN(kmFinal.value.trim()) || Number(kmFinal.value.trim()) < 0) {
+      alert("Informe o KM final válido.");
+      return;
+    }
+    if (!relatoResolucao.value.trim()) {
+      alert("Informe o relato de resolução.");
+      return;
+    }
 
-function editarTecnico(id,n,e){
-  editIdTec.value=id;
-  nomeTec.value=n;
-  emailTec.value=e;
-  senhaTec.value="";
-}
+    // Atualiza o atendimento com dados de encerramento
+    const dadosFinalizacao = {
+      km_final: Number(kmFinal.value.trim()),
+      relato_resolucao: relatoResolucao.value.trim(),
+      fim_atendimento: new Date().toISOString(),
+      status: "finalizado"
+    };
 
-async function toggleTecnico(id,ativo){
-  await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);
-  listarTecnicos();
-}
+    const { error } = await supabase
+      .from("atendimentos")
+      .update(dadosFinalizacao)
+      .eq("id", atendimentoId);
 
-function limparTec(){ editIdTec.value=""; nomeTec.value=""; emailTec.value=""; senhaTec.value=""; }
+    if (error) {
+      statusMsg.textContent = "Erro ao finalizar atendimento: " + error.message;
+      statusMsg.style.color = "#dc3545";
+      return;
+    }
 
-/* ================= AUXILIARES ================= */
-async function listarAuxiliares() {
-  const { data } = await supabaseClient.from("auxiliares").select("*").order("nome");
-  listaAuxiliares.innerHTML="";
-  auxiliarSelect.innerHTML="<option value=''>Selecione</option>";
+    statusMsg.textContent = "Atendimento finalizado com sucesso!";
+    statusMsg.style.color = "#28a745";
 
-  (data||[]).forEach(a=>{
-    listaAuxiliares.innerHTML+=`
-      <tr>
-        <td>${a.nome}</td>
-        <td>${a.local||""}</td>
-        <td>${a.ativo?"Ativo":"Inativo"}</td>
-        <td>
-          <button class="btn-edit" onclick="editarAux('${a.id}','${a.nome}','${a.local||""}')">Editar</button>
-          <button class="${a.ativo?"btn-danger":"btn-success"}" onclick="toggleAux('${a.id}',${a.ativo})">
-            ${a.ativo?"Desativar":"Ativar"}
-          </button>
-        </td>
-      </tr>`;
-    if(a.ativo) auxiliarSelect.innerHTML += `<option value="${a.nome}">${a.nome}</option>`;
+    // Resetar formulário para novo atendimento
+    atendimentoId = null;
+    nomeTecnico.disabled = false;
+    protocolo.disabled = false;
+    tipoServico.disabled = false;
+    latitude.disabled = false;
+    longitude.disabled = false;
+    btnIniciar.disabled = false;
+
+    finalizarSection.classList.add("hidden");
+    kmFinal.value = "";
+    relatoResolucao.value = "";
   });
-}
-
-async function salvarAuxiliar() {
-  const dados = { nome:nomeAux.value, local:localAux.value };
-  if(editIdAux.value) {
-    await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);
-  } else {
-    dados.ativo=true;
-    await supabaseClient.from("auxiliares").insert(dados);
-  }
-  limparAux();
-  listarAuxiliares();
-}
-
-function editarAux(id,n,l){ editIdAux.value=id; nomeAux.value=n; localAux.value=l; }
-async function toggleAux(id,ativo){
-  await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id);
-  listarAuxiliares();
-}
-function limparAux(){ editIdAux.value=""; nomeAux.value=""; localAux.value=""; }
-
-/* ================= ATENDIMENTOS ================= */
-async function criarAtendimento(){
-  const dados={
-    tecnico_nome: tecnicoSelect.value || null,
-    auxiliar_nome: auxiliarSelect.value || null,
-    protocolo: protocolo.value || null,
-    tipo_servico: tipoServico.value || null,
-    latitude_inicio: latitude.value || null,
-    longitude_inicio: longitude.value || null,
-    status: "aberto",
-    inicio_deslocamento: new Date().toISOString()
-  };
-
-  if(!dados.tecnico_nome || !dados.protocolo || !dados.tipo_servico){
-    return alert("Preencha Técnico, Protocolo e Tipo de Serviço!");
-  }
-
-  try {
-    const { error } = await supabaseClient.from("atendimentos").insert(dados);
-    if(error) throw error;
-
-    protocolo.value="";
-    tipoServico.value="";
-    latitude.value="";
-    longitude.value="";
-    tecnicoSelect.value="";
-    auxiliarSelect.value="";
-
-    alert("Atendimento criado com sucesso!");
-  } catch(err) {
-    console.error(err);
-    alert("Erro ao criar atendimento: " + JSON.stringify(err));
-  }
-}
-
-/* ================= EXCEL ================= */
-async function exportarExcel() {
-  if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
-  const ini=dataInicio.value+"T00:00:00";
-  const fim=dataFim.value+"T23:59:59";
-  const { data } = await supabaseClient.from("atendimentos")
-    .select("*")
-    .gte("inicio_deslocamento",ini)
-    .lte("inicio_deslocamento",fim)
-    .gt("minutos_plantao",0);
-
-  const rows=(data||[]).map(a=>({
-    Data:a.inicio_deslocamento.split("T")[0],
-    Técnico:a.tecnico_nome,
-    Auxiliar:a.auxiliar_nome,
-    Protocolo:a.protocolo,
-    Tipo:a.tipo_servico,
-    Início:a.inicio_deslocamento.split("T")[1].slice(0,5),
-    Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
-    Plantão:formatarPlantao(a.minutos_plantao)
-  }));
-
-  const ws=XLSX.utils.json_to_sheet(rows);
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,"Plantao");
-  XLSX.writeFile(wb,"relatorio_plantao.xlsx");
-}
-
-/* ================= INIT ================= */
-listarTecnicos();
-listarAuxiliares();
 </script>
 
 </body>
