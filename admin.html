@@ -1,212 +1,295 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Painel Técnico - Atendimento</title>
+<meta charset="UTF-8">
+<title>Administração</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-  body { font-family: Arial; max-width: 600px; margin: 20px auto; background:#f9f9f9; padding: 20px; border-radius: 8px; }
-  h2 { text-align:center; }
-  label { display:block; margin-top:15px; font-weight:bold; }
-  input, textarea, select, button { width: 100%; padding:8px; margin-top:5px; }
-  button { background:#28a745; border:none; color:#fff; font-weight:bold; cursor:pointer; border-radius:4px; margin-top:15px; }
-  button[disabled] { background:#ccc; cursor:not-allowed; }
-  .link-maps { margin-top:5px; font-size: 0.9em; }
-  .status { margin-top:10px; font-weight:bold; color: #dc3545; }
-  .hidden { display:none; }
+body {
+  font-family: Arial;
+  max-width: 1000px;
+  margin: 20px auto;
+  background: #f4f4f4;
+  padding: 20px;
+  border-radius: 8px;
+}
+h2, h3 { text-align:center; }
+
+label { font-weight: bold; margin-top: 10px; display:block; }
+input, button {
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+}
+
+button {
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.btn-add { background:#007bff; color:#fff; }
+.btn-edit { background:#ffc107; }
+.btn-danger { background:#dc3545; color:#fff; }
+.btn-success { background:#28a745; color:#fff; }
+.btn-export { background:#28a745; color:#fff; margin-top:20px; }
+
+table {
+  width: 100%;
+  margin-top: 15px;
+  border-collapse: collapse;
+  background:#fff;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px;
+}
+th { background:#eee; }
 </style>
 </head>
+
 <body>
 
-<h2>Painel Técnico - Atendimento</h2>
+<h2>Administração</h2>
 
-<!-- Exemplo: preencha aqui os dados do técnico -->
-<label>Técnico</label>
-<input type="text" id="nomeTecnico" placeholder="Nome do Técnico" />
+<!-- ================= TECNICOS ================= -->
+<h3>Cadastro de Técnicos</h3>
 
-<label>Protocolo (preenchido automaticamente ou por sistema)</label>
-<input type="text" id="protocolo" placeholder="Protocolo" />
+<input type="hidden" id="editIdTec">
 
-<label>Tipo de Serviço <small>(obrigatório)</small></label>
-<select id="tipoServico">
-  <option value="">-- Selecione o tipo de serviço --</option>
-  <option value="Ampliação FTTH">Ampliação FTTH</option>
-  <option value="Manutenção">Manutenção</option>
-  <option value="Instalação">Instalação</option>
-  <option value="Reparo">Reparo</option>
-  <!-- outros tipos -->
-</select>
+<label>Nome</label>
+<input id="nomeTec">
 
-<label>Localização (latitude, longitude)</label>
-<input type="text" id="latitude" placeholder="Latitude" />
-<input type="text" id="longitude" placeholder="Longitude" />
-<div class="link-maps" id="mapLink"></div>
+<label>Email</label>
+<input id="emailTec">
 
-<button id="btnIniciar">Iniciar Atendimento</button>
+<label>Senha (opcional)</label>
+<input id="senhaTec" type="password">
 
-<div id="finalizarSection" class="hidden">
-  <h3>Finalizar Atendimento</h3>
-  <label>KM final <small>(obrigatório)</small></label>
-  <input type="number" id="kmFinal" min="0" placeholder="KM final" />
-  
-  <label>Relato de resolução <small>(obrigatório)</small></label>
-  <textarea id="relatoResolucao" rows="4" placeholder="Descreva como resolveu o atendimento"></textarea>
-  
-  <button id="btnFinalizar">Finalizar Atendimento</button>
-</div>
+<button class="btn-add" onclick="salvarTecnico()">💾 Salvar Técnico</button>
 
-<div class="status" id="statusMsg"></div>
+<table>
+<thead>
+<tr>
+  <th>Nome</th>
+  <th>Email</th>
+  <th>Status</th>
+  <th>Ações</th>
+</tr>
+</thead>
+<tbody id="listaTecnicos"></tbody>
+</table>
+
+<!-- ================= AUXILIARES ================= -->
+<h3>Cadastro de Auxiliares</h3>
+
+<input type="hidden" id="editIdAux">
+
+<label>Nome</label>
+<input id="nomeAux">
+
+<label>Local / Base</label>
+<input id="localAux">
+
+<button class="btn-add" onclick="salvarAuxiliar()">💾 Salvar Auxiliar</button>
+
+<table>
+<thead>
+<tr>
+  <th>Nome</th>
+  <th>Local</th>
+  <th>Status</th>
+  <th>Ações</th>
+</tr>
+</thead>
+<tbody id="listaAuxiliares"></tbody>
+</table>
+
+<!-- ================= RELATORIO ================= -->
+<h3>Relatório de Plantão</h3>
+
+<label>Data início</label>
+<input type="date" id="dataInicio">
+
+<label>Data fim</label>
+<input type="date" id="dataFim">
+
+<button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
 <script>
-  const supabaseUrl = "https://bzgvbghxmebdjqnlakbj.supabase.co";
-  const supabaseKey = "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv";
-  const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+const { createClient } = supabase;
+const supabaseClient = createClient(
+  "https://bzgvbghxmebdjqnlakbj.supabase.co",
+  "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv"
+);
 
-  let atendimentoId = null;
+/* ================= UTIL ================= */
+function formatarPlantao(min) {
+  if (min === null || min === undefined) return "00h00min";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}min`;
+}
 
-  const nomeTecnico = document.getElementById("nomeTecnico");
-  const protocolo = document.getElementById("protocolo");
-  const tipoServico = document.getElementById("tipoServico");
-  const latitude = document.getElementById("latitude");
-  const longitude = document.getElementById("longitude");
-  const mapLink = document.getElementById("mapLink");
-  const btnIniciar = document.getElementById("btnIniciar");
+/* ================= TECNICOS (AJUSTADO) ================= */
+async function listarTecnicos() {
+  const { data: tecnicos } = await supabaseClient
+    .from("tecnicos")
+    .select("*")
+    .order("nome");
 
-  const finalizarSection = document.getElementById("finalizarSection");
-  const kmFinal = document.getElementById("kmFinal");
-  const relatoResolucao = document.getElementById("relatoResolucao");
-  const btnFinalizar = document.getElementById("btnFinalizar");
-  const statusMsg = document.getElementById("statusMsg");
+  const { data: atendimentos } = await supabaseClient
+    .from("atendimentos")
+    .select("tecnico_nome, protocolo, inicio_deslocamento")
+    .eq("status", "aberto");
 
-  // Atualiza o link do Google Maps conforme latitude e longitude digitados
-  function atualizarLinkMapa() {
-    const lat = latitude.value.trim();
-    const lon = longitude.value.trim();
-    if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
-      mapLink.innerHTML = `<a href="https://www.google.com/maps/place/${lat}+${lon}" target="_blank" rel="noopener">Ver Localização no Google Maps</a>`;
+  listaTecnicos.innerHTML = "";
+
+  (tecnicos || []).forEach(t => {
+    const atendimento = (atendimentos || [])
+      .find(a => a.tecnico_nome === t.nome);
+
+    let statusHtml = "";
+
+    if (!t.ativo) {
+      statusHtml = `<span style="color:#999">Inativo</span>`;
+    } else if (atendimento) {
+      statusHtml = `
+        <span style="color:#dc3545;font-weight:bold">
+          🔴 EM ATENDIMENTO<br>
+          Prot. ${atendimento.protocolo}<br>
+          ${atendimento.inicio_deslocamento.split("T")[0]}
+          ${atendimento.inicio_deslocamento.split("T")[1].slice(0,5)}
+        </span>`;
     } else {
-      mapLink.innerHTML = "";
+      statusHtml = `<span style="color:#28a745;font-weight:bold">🟢 LIVRE</span>`;
     }
+
+    listaTecnicos.innerHTML += `
+      <tr>
+        <td>${t.nome}</td>
+        <td>${t.email}</td>
+        <td>${statusHtml}</td>
+        <td>
+          <button class="btn-edit"
+            onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">
+            Editar
+          </button>
+          <button class="${t.ativo ? "btn-danger" : "btn-success"}"
+            onclick="toggleTecnico('${t.id}',${t.ativo})">
+            ${t.ativo ? "Desativar" : "Ativar"}
+          </button>
+        </td>
+      </tr>`;
+  });
+}
+
+async function salvarTecnico() {
+  const dados = { nome: nomeTec.value, email: emailTec.value };
+  if (senhaTec.value) dados.senha = senhaTec.value;
+
+  if (editIdTec.value) {
+    await supabaseClient.from("tecnicos").update(dados).eq("id", editIdTec.value);
+  } else {
+    dados.ativo = true;
+    await supabaseClient.from("tecnicos").insert(dados);
   }
-  latitude.addEventListener("input", atualizarLinkMapa);
-  longitude.addEventListener("input", atualizarLinkMapa);
+  limparTec();
+  listarTecnicos();
+}
 
-  btnIniciar.addEventListener("click", async () => {
-    statusMsg.textContent = "";
-    // Valida campos obrigatórios
-    if (!nomeTecnico.value.trim()) {
-      alert("Informe o nome do técnico.");
-      return;
-    }
-    if (!protocolo.value.trim()) {
-      alert("Informe o protocolo.");
-      return;
-    }
-    if (!tipoServico.value) {
-      alert("Selecione o tipo de serviço.");
-      return;
-    }
-    if (!latitude.value.trim() || isNaN(latitude.value.trim())) {
-      alert("Informe uma latitude válida.");
-      return;
-    }
-    if (!longitude.value.trim() || isNaN(longitude.value.trim())) {
-      alert("Informe uma longitude válida.");
-      return;
-    }
+function editarTecnico(id,n,e){
+  editIdTec.value=id;
+  nomeTec.value=n;
+  emailTec.value=e;
+  senhaTec.value="";
+}
 
-    // Monta objeto de inserção com todos os campos obrigatórios (incluindo motivo)
-    const dadosAtendimento = {
-      tecnico_nome: nomeTecnico.value.trim(),
-      protocolo: protocolo.value.trim(),
-      tipo_servico: tipoServico.value,
-      latitude_inicio: parseFloat(latitude.value.trim()),
-      longitude_inicio: parseFloat(longitude.value.trim()),
-      inicio_deslocamento: new Date().toISOString(),
-      status: "aberto",
-      motivo: `Serviço iniciado: ${tipoServico.value}`, // Exemplo de motivo inicial, pode ajustar
-      minutos_plantao: 0
-    };
+async function toggleTecnico(id,ativo){
+  await supabaseClient.from("tecnicos").update({ativo:!ativo}).eq("id",id);
+  listarTecnicos();
+}
 
-    // Insere no banco
-    const { data, error } = await supabase
-      .from("atendimentos")
-      .insert([dadosAtendimento]);
+function limparTec(){
+  editIdTec.value="";
+  nomeTec.value="";
+  emailTec.value="";
+  senhaTec.value="";
+}
 
-    if (error) {
-      statusMsg.textContent = "Erro ao criar atendimento: " + error.message;
-      statusMsg.style.color = "#dc3545";
-      return;
-    }
-
-    atendimentoId = data[0].id;
-    statusMsg.textContent = "Atendimento iniciado com sucesso!";
-    statusMsg.style.color = "#28a745";
-
-    // Exibe seção para finalizar atendimento
-    finalizarSection.classList.remove("hidden");
-
-    // Desabilita os campos de início para evitar editar depois de iniciado
-    nomeTecnico.disabled = true;
-    protocolo.disabled = true;
-    tipoServico.disabled = true;
-    latitude.disabled = true;
-    longitude.disabled = true;
-    btnIniciar.disabled = true;
+/* AUXILIARES */
+async function listarAuxiliares() {
+  const { data } = await supabaseClient.from("auxiliares").select("*").order("nome");
+  listaAuxiliares.innerHTML="";
+  (data||[]).forEach(a=>{
+    listaAuxiliares.innerHTML+=`
+      <tr>
+        <td>${a.nome}</td>
+        <td>${a.local||""}</td>
+        <td>${a.ativo?"Ativo":"Inativo"}</td>
+        <td>
+          <button class="btn-edit" onclick="editarAux('${a.id}','${a.nome}','${a.local||""}')">Editar</button>
+          <button class="${a.ativo?"btn-danger":"btn-success"}"
+            onclick="toggleAux('${a.id}',${a.ativo})">
+            ${a.ativo?"Desativar":"Ativar"}
+          </button>
+        </td>
+      </tr>`;
   });
+}
 
-  btnFinalizar.addEventListener("click", async () => {
-    statusMsg.textContent = "";
+async function salvarAuxiliar() {
+  const dados = { nome:nomeAux.value, local:localAux.value };
+  if (editIdAux.value) {
+    await supabaseClient.from("auxiliares").update(dados).eq("id",editIdAux.value);
+  } else {
+    dados.ativo=true;
+    await supabaseClient.from("auxiliares").insert(dados);
+  }
+  limparAux();
+  listarAuxiliares();
+}
 
-    if (!atendimentoId) {
-      alert("Nenhum atendimento iniciado.");
-      return;
-    }
-    if (!kmFinal.value.trim() || isNaN(kmFinal.value.trim()) || Number(kmFinal.value.trim()) < 0) {
-      alert("Informe o KM final válido.");
-      return;
-    }
-    if (!relatoResolucao.value.trim()) {
-      alert("Informe o relato de resolução.");
-      return;
-    }
+function editarAux(id,n,l){ editIdAux.value=id; nomeAux.value=n; localAux.value=l; }
+async function toggleAux(id,ativo){
+  await supabaseClient.from("auxiliares").update({ativo:!ativo}).eq("id",id);
+  listarAuxiliares();
+}
+function limparAux(){ editIdAux.value=""; nomeAux.value=""; localAux.value=""; }
 
-    // Atualiza o atendimento com dados de encerramento
-    const dadosFinalizacao = {
-      km_final: Number(kmFinal.value.trim()),
-      relato_resolucao: relatoResolucao.value.trim(),
-      fim_atendimento: new Date().toISOString(),
-      status: "finalizado"
-    };
+async function exportarExcel() {
+  if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
+  const ini=dataInicio.value+"T00:00:00";
+  const fim=dataFim.value+"T23:59:59";
+  const { data } = await supabaseClient.from("atendimentos")
+    .select("*")
+    .gte("inicio_deslocamento",ini)
+    .lte("inicio_deslocamento",fim)
+    .gt("minutos_plantao",0);
 
-    const { error } = await supabase
-      .from("atendimentos")
-      .update(dadosFinalizacao)
-      .eq("id", atendimentoId);
+  const rows=(data||[]).map(a=>({
+    Data:a.inicio_deslocamento.split("T")[0],
+    Técnico:a.tecnico_nome,
+    Auxiliar:a.auxiliar_nome,
+    Protocolo:a.protocolo,
+    Início:a.inicio_deslocamento.split("T")[1].slice(0,5),
+    Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
+    Plantão:formatarPlantao(a.minutos_plantao)
+  }));
 
-    if (error) {
-      statusMsg.textContent = "Erro ao finalizar atendimento: " + error.message;
-      statusMsg.style.color = "#dc3545";
-      return;
-    }
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Plantao");
+  XLSX.writeFile(wb,"relatorio_plantao.xlsx");
+}
 
-    statusMsg.textContent = "Atendimento finalizado com sucesso!";
-    statusMsg.style.color = "#28a745";
-
-    // Resetar formulário para novo atendimento
-    atendimentoId = null;
-    nomeTecnico.disabled = false;
-    protocolo.disabled = false;
-    tipoServico.disabled = false;
-    latitude.disabled = false;
-    longitude.disabled = false;
-    btnIniciar.disabled = false;
-
-    finalizarSection.classList.add("hidden");
-    kmFinal.value = "";
-    relatoResolucao.value = "";
-  });
+/* INIT */
+listarTecnicos();
+listarAuxiliares();
 </script>
 
 </body>
