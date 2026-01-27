@@ -66,7 +66,7 @@ button:hover { background: #218838; }
   <label>Protocolo</label>
   <input id="protocolo" type="number">
 
-  <label>Tipo de Serviço</label>
+  <label>Causa do Serviço</label>
   <textarea id="motivo"></textarea>
 
   <label>KM Inicial</label>
@@ -75,7 +75,7 @@ button:hover { background: #218838; }
   <button id="btnIniciar" onclick="iniciarAtendimento()">🚀 Iniciar Atendimento</button>
 
   <div id="finalizarBox">
-    <label>KM Final (opcional)</label>
+    <label>KM Final</label>
     <input id="kmFinal" type="number">
 
     <label>Como resolveu</label>
@@ -96,61 +96,44 @@ const supabaseClient = createClient(
 );
 
 /* ================= TELEGRAM ================= */
-const TELEGRAM_TOKEN = "8401740337:AAFxWCHx8M8Mc8Z-WHhhT-nfGlhAGP9L4dA";
-const TELEGRAM_CHAT_ID = "-4860857271";
+const TELEGRAM_TOKEN = "SEU_TOKEN";
+const TELEGRAM_CHAT_ID = "SEU_CHAT_ID";
 
 /* ================= VARIÁVEIS ================= */
 let tecnicoNome = "";
 let atendimentoAtual = null;
 
-/* ================= HORA LOCAL (CORRIGIDA) ================= */
+/* ================= INTERNET ================= */
+function online() {
+  return navigator.onLine;
+}
+window.addEventListener("online", sincronizarPendentes);
+
+/* ================= DATA ================= */
 function agoraBR() {
   const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  const hh = String(d.getHours()).padStart(2,"0");
-  const mi = String(d.getMinutes()).padStart(2,"0");
-  const ss = String(d.getSeconds()).padStart(2,"0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+  return d.toISOString().slice(0,19);
 }
 
-/* ================= FORMATAÇÃO ================= */
-function dataBR(iso) {
-  const [d] = iso.split("T");
-  const [y,m,da] = d.split("-");
-  return `${da}/${m}/${y}`;
-}
-function horaBR(iso) {
-  return iso.split("T")[1].slice(0,5);
-}
-function formatarMinutos(min) {
-  const h = Math.floor(min/60);
-  const m = min%60;
-  return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}`;
-}
-
-/* ================= ESTADO ================= */
-function setEmAtendimento() {
-  statusAtendimento.textContent = "🔴 EM ATENDIMENTO";
-  btnIniciar.disabled = true;
-}
-function setLivre() {
-  statusAtendimento.textContent = "🟢 LIVRE";
-  btnIniciar.disabled = false;
+/* ================= GPS ================= */
+function obterLocalizacao() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude
+      }),
+      () => reject(),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
 }
 
-/* ================= PLANTÃO ================= */
-function calcularMinutosPlantao(inicioISO, fimISO) {
-  let atual = new Date(inicioISO);
-  const fim = new Date(fimISO);
-  let minutos = 0;
-  while (atual < fim) {
-    const h = atual.getHours();
-    if (h >= 18 || h < 8) minutos++;
-    atual.setMinutes(atual.getMinutes() + 1);
-  }
-  return minutos;
+/* ================= OFFLINE ================= */
+function salvarOffline(at) {
+  const fila = JSON.parse(localStorage.getItem("filaAtendimentos") || "[]");
+  fila.push(at);
+  localStorage.setItem("filaAtendimentos", JSON.stringify(fila));
 }
 
 /* ================= LOGIN ================= */
@@ -172,39 +155,21 @@ async function login() {
 
   carregarAuxiliares();
   carregarVeiculos();
-  carregarAtendimentoAberto();
 }
 
-/* ================= AUXILIARES ================= */
+/* ================= LISTAS ================= */
 async function carregarAuxiliares() {
-  const { data } = await supabaseClient
-    .from("auxiliares")
-    .select("nome")
-    .order("nome");
-
+  const { data } = await supabaseClient.from("auxiliares").select("nome");
   auxiliar.innerHTML="";
   (data||[]).forEach(a=>{
     const o=document.createElement("option");
-    o.value=a.nome;
-    o.textContent=a.nome;
+    o.value=o.textContent=a.nome;
     auxiliar.appendChild(o);
   });
 }
-
-/* ================= VEÍCULOS ================= */
 async function carregarVeiculos() {
-  const { data } = await supabaseClient
-    .from("veiculos")
-    .select("placa, modelo")
-    .order("placa");
-
-  veiculo.innerHTML = "";
-
-  const opt = document.createElement("option");
-  opt.value = "";
-  opt.textContent = "— Sem veículo —";
-  veiculo.appendChild(opt);
-
+  const { data } = await supabaseClient.from("veiculos").select("placa,modelo");
+  veiculo.innerHTML="<option value=''>— Sem veículo —</option>";
   (data||[]).forEach(v=>{
     const o=document.createElement("option");
     o.value=v.placa;
@@ -213,155 +178,76 @@ async function carregarVeiculos() {
   });
 }
 
-/* ================= ATENDIMENTO ABERTO ================= */
-async function carregarAtendimentoAberto() {
-  const { data } = await supabaseClient
-    .from("atendimentos")
-    .select("*")
-    .eq("tecnico_nome", tecnicoNome)
-    .eq("status", "aberto")
-    .maybeSingle();
-
-  if (data) {
-    atendimentoAtual = data;
-    protocolo.value = data.protocolo;
-    motivo.value = data.motivo;
-    kmInicial.value = data.km_inicial;
-    veiculo.value = data.veiculo_nome || "";
-    setEmAtendimento();
-    finalizarBox.style.display = "block";
-  } else {
-    setLivre();
-  }
-}
-
-/* ================= TELEGRAM ================= */
-async function enviarTelegramInicio(at) {
-  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text:
-`🚨 ATENDIMENTO INICIADO
-
-📅 ${dataBR(at.inicio_deslocamento)}
-
-👷 Técnico: ${at.tecnico_nome}
-👥 Auxiliar: ${at.auxiliar_nome}
-🚗 Veículo: ${at.veiculo_nome || "Não informado"}
-📄 Protocolo: ${at.protocolo}
-
-🕒 Início: ${horaBR(at.inicio_deslocamento)}
-🚗 KM Inicial: ${at.km_inicial}
-
-🛠 Tipo de Serviço:
-${at.motivo}
-
-⏳ Em andamento...`
-    })
-  });
-  const json = await res.json();
-  return json.result.message_id;
-}
-
-async function editarTelegramFinal(at, minutosPlantao) {
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText`,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      message_id: at.telegram_message_id,
-      text:
-`✅ ATENDIMENTO FINALIZADO
-
-📅 ${dataBR(at.inicio_deslocamento)}
-
-👷 Técnico: ${at.tecnico_nome}
-👥 Auxiliar: ${at.auxiliar_nome}
-🚗 Veículo: ${at.veiculo_nome || "Não informado"}
-📄 Protocolo: ${at.protocolo}
-
-🕒 Início: ${horaBR(at.inicio_deslocamento)}
-🕒 Fim: ${horaBR(at.fim_atendimento)}
-
-🚗 KM Inicial: ${at.km_inicial}
-🚗 KM Final: ${at.km_final || "-"}
-📏 KM Total: ${at.km_total !== null ? at.km_total : "-"}
-
-⏱ Plantão: ${formatarMinutos(minutosPlantao)}
-
-🛠 Tipo de Serviço:
-${at.motivo}
-
-🧰 Como resolveu:
-${at.como_resolveu || "Retorno à base"}`
-    })
-  });
-}
-
 /* ================= INICIAR ================= */
 async function iniciarAtendimento() {
-  const inicio = agoraBR();
+  let loc;
+  try { loc = await obterLocalizacao(); }
+  catch { return alert("Ative o GPS"); }
 
-  const atendimentoTemp = {
+  const at = {
     tecnico_nome: tecnicoNome,
     auxiliar_nome: auxiliar.value,
     veiculo_nome: veiculo.value || null,
     protocolo: protocolo.value,
     motivo: motivo.value,
     km_inicial: kmInicial.value,
-    inicio_deslocamento: inicio,
-    status: "aberto"
+    inicio_deslocamento: agoraBR(),
+    status: "aberto",
+    latitude_inicio: loc.latitude,
+    longitude_inicio: loc.longitude
   };
 
-  const { error } = await supabaseClient.from("atendimentos").insert(atendimentoTemp);
-  if (error) return alert(error.message);
+  if (!online()) {
+    at.offline = true;
+    salvarOffline(at);
+    abrirMapa(loc);
+    atendimentoAtual = at;
+    finalizarBox.style.display="block";
+    return alert("Sem internet. Salvo offline.");
+  }
 
-  const msgId = await enviarTelegramInicio(atendimentoTemp);
-
-  await supabaseClient
-    .from("atendimentos")
-    .update({ telegram_message_id: msgId })
-    .eq("tecnico_nome", tecnicoNome)
-    .eq("status", "aberto");
-
-  atendimentoAtual = { ...atendimentoTemp, telegram_message_id: msgId };
-  setEmAtendimento();
-  finalizarBox.style.display = "block";
+  await supabaseClient.from("atendimentos").insert(at);
+  abrirMapa(loc);
+  atendimentoAtual = at;
+  finalizarBox.style.display="block";
 }
 
 /* ================= FINALIZAR ================= */
 async function finalizarAtendimento() {
-  const fim = agoraBR();
-  const minutosPlantao = calcularMinutosPlantao(atendimentoAtual.inicio_deslocamento, fim);
+  atendimentoAtual.fim_atendimento = agoraBR();
+  atendimentoAtual.km_final = kmFinal.value || null;
+  atendimentoAtual.como_resolveu = comoResolveu.value || "Retorno à base";
+  atendimentoAtual.status = "finalizado";
 
-  const kmTotal = kmFinal.value
-    ? Number(kmFinal.value) - Number(atendimentoAtual.km_inicial)
-    : null;
-
-  const dados = {
-    fim_atendimento: fim,
-    status: "finalizado",
-    km_final: kmFinal.value || null,
-    km_total: kmTotal,
-    motivo: atendimentoAtual.motivo,
-    como_resolveu: comoResolveu.value || "Retorno à base",
-    minutos_plantao: minutosPlantao
-  };
+  if (atendimentoAtual.offline) {
+    salvarOffline(atendimentoAtual);
+    return location.reload();
+  }
 
   await supabaseClient
     .from("atendimentos")
-    .update(dados)
+    .update(atendimentoAtual)
     .eq("tecnico_nome", tecnicoNome)
-    .eq("status", "aberto");
-
-  await editarTelegramFinal(
-    { ...atendimentoAtual, ...dados },
-    minutosPlantao
-  );
+    .eq("status","aberto");
 
   location.reload();
+}
+
+/* ================= MAPA ================= */
+function abrirMapa(loc) {
+  window.open(`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`, "_blank");
+}
+
+/* ================= SINCRONIZAR ================= */
+async function sincronizarPendentes() {
+  const fila = JSON.parse(localStorage.getItem("filaAtendimentos") || "[]");
+  if (!fila.length) return;
+
+  for (const at of fila) {
+    await supabaseClient.from("atendimentos").insert(at);
+  }
+  localStorage.removeItem("filaAtendimentos");
+  alert("Atendimentos offline sincronizados!");
 }
 </script>
 
