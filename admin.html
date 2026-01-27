@@ -46,6 +46,8 @@ th, td {
   padding: 6px;
 }
 th { background:#eee; }
+a { color:#007bff; text-decoration:none; }
+a:hover { text-decoration:underline; }
 </style>
 </head>
 
@@ -106,6 +108,38 @@ th { background:#eee; }
 <tbody id="listaAuxiliares"></tbody>
 </table>
 
+<!-- ================= ATENDIMENTOS ================= -->
+<h3>Cadastro de Atendimentos</h3>
+
+<input type="hidden" id="editIdAtendimento">
+
+<label>Protocolo</label>
+<input id="protocoloAtendimento">
+
+<label>Tipo de Serviço</label>
+<input id="tipoServico">
+
+<label>Latitude</label>
+<input id="latitudeAtendimento" type="number" step="any">
+
+<label>Longitude</label>
+<input id="longitudeAtendimento" type="number" step="any">
+
+<button class="btn-add" onclick="salvarAtendimento()">💾 Salvar Atendimento</button>
+
+<table>
+<thead>
+<tr>
+  <th>Protocolo</th>
+  <th>Tipo de Serviço</th>
+  <th>Localização</th>
+  <th>Status</th>
+  <th>Ações</th>
+</tr>
+</thead>
+<tbody id="listaAtendimentos"></tbody>
+</table>
+
 <!-- ================= RELATORIO ================= -->
 <h3>Relatório de Plantão</h3>
 
@@ -135,7 +169,7 @@ function formatarPlantao(min) {
   return `${String(h).padStart(2,"0")}h${String(m).padStart(2,"0")}min`;
 }
 
-/* ================= TECNICOS (AJUSTADO) ================= */
+/* ================= TECNICOS ================= */
 async function listarTecnicos() {
   const { data: tecnicos } = await supabaseClient
     .from("tecnicos")
@@ -144,7 +178,7 @@ async function listarTecnicos() {
 
   const { data: atendimentos } = await supabaseClient
     .from("atendimentos")
-    .select("tecnico_nome, protocolo, inicio_deslocamento")
+    .select("tecnico_nome, protocolo, inicio_deslocamento, status")
     .eq("status", "aberto");
 
   listaTecnicos.innerHTML = "";
@@ -162,8 +196,8 @@ async function listarTecnicos() {
         <span style="color:#dc3545;font-weight:bold">
           🔴 EM ATENDIMENTO<br>
           Prot. ${atendimento.protocolo}<br>
-          ${atendimento.inicio_deslocamento.split("T")[0]}
-          ${atendimento.inicio_deslocamento.split("T")[1].slice(0,5)}
+          ${atendimento.inicio_deslocamento?.split("T")[0]}
+          ${atendimento.inicio_deslocamento?.split("T")[1]?.slice(0,5)}
         </span>`;
     } else {
       statusHtml = `<span style="color:#28a745;font-weight:bold">🟢 LIVRE</span>`;
@@ -187,8 +221,6 @@ async function listarTecnicos() {
       </tr>`;
   });
 }
-
-/* ===== RESTO DO CÓDIGO (IGUAL AO SEU, SEM ALTERAÇÃO) ===== */
 
 async function salvarTecnico() {
   const dados = { nome: nomeTec.value, email: emailTec.value };
@@ -223,8 +255,7 @@ function limparTec(){
   senhaTec.value="";
 }
 
-/* AUXILIARES + EXCEL permanecem iguais */
-
+/* ================= AUXILIARES ================= */
 async function listarAuxiliares() {
   const { data } = await supabaseClient.from("auxiliares").select("*").order("nome");
   listaAuxiliares.innerHTML="";
@@ -264,6 +295,61 @@ async function toggleAux(id,ativo){
 }
 function limparAux(){ editIdAux.value=""; nomeAux.value=""; localAux.value=""; }
 
+/* ================= ATENDIMENTOS ================= */
+async function listarAtendimentos() {
+  const { data } = await supabaseClient.from("atendimentos").select("*").order("protocolo");
+  listaAtendimentos.innerHTML="";
+  (data||[]).forEach(a=>{
+    const status = a.status==="aberto" ? `<span style="color:#dc3545;font-weight:bold">ABERTO</span>` : `<span style="color:#28a745;font-weight:bold">FINALIZADO</span>`;
+    const linkMapa = a.latitude_servico && a.longitude_servico ? `<a href="https://www.google.com/maps?q=${a.latitude_servico},${a.longitude_servico}" target="_blank">Ver Mapa</a>` : "";
+    listaAtendimentos.innerHTML+=`
+      <tr>
+        <td>${a.protocolo}</td>
+        <td>${a.motivo}</td>
+        <td>${linkMapa}</td>
+        <td>${status}</td>
+        <td>
+          <button class="btn-edit" onclick="editarAtendimento('${a.id}','${a.protocolo}','${a.motivo}','${a.latitude_servico||""}','${a.longitude_servico||""}')">Editar</button>
+        </td>
+      </tr>`;
+  });
+}
+
+async function salvarAtendimento() {
+  const dados = {
+    protocolo: protocoloAtendimento.value,
+    motivo: tipoServico.value,
+    latitude_servico: latitudeAtendimento.value || null,
+    longitude_servico: longitudeAtendimento.value || null,
+    status: "aberto"
+  };
+
+  if (editIdAtendimento.value) {
+    await supabaseClient.from("atendimentos").update(dados).eq("id",editIdAtendimento.value);
+  } else {
+    await supabaseClient.from("atendimentos").insert(dados);
+  }
+  limparAtendimento();
+  listarAtendimentos();
+}
+
+function editarAtendimento(id,protocolo,motivo,lat,lon){
+  editIdAtendimento.value=id;
+  protocoloAtendimento.value=protocolo;
+  tipoServico.value=motivo;
+  latitudeAtendimento.value=lat;
+  longitudeAtendimento.value=lon;
+}
+
+function limparAtendimento(){
+  editIdAtendimento.value="";
+  protocoloAtendimento.value="";
+  tipoServico.value="";
+  latitudeAtendimento.value="";
+  longitudeAtendimento.value="";
+}
+
+/* ================= RELATORIO ================= */
 async function exportarExcel() {
   if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
   const ini=dataInicio.value+"T00:00:00";
@@ -275,11 +361,13 @@ async function exportarExcel() {
     .gt("minutos_plantao",0);
 
   const rows=(data||[]).map(a=>({
-    Data:a.inicio_deslocamento.split("T")[0],
+    Data:a.inicio_deslocamento?.split("T")[0],
     Técnico:a.tecnico_nome,
     Auxiliar:a.auxiliar_nome,
     Protocolo:a.protocolo,
-    Início:a.inicio_deslocamento.split("T")[1].slice(0,5),
+    TipoServico:a.motivo,
+    Localizacao:a.latitude_servico && a.longitude_servico ? `https://www.google.com/maps?q=${a.latitude_servico},${a.longitude_servico}` : "",
+    Início:a.inicio_deslocamento?.split("T")[1]?.slice(0,5)||"",
     Fim:a.fim_atendimento?.split("T")[1]?.slice(0,5)||"",
     Plantão:formatarPlantao(a.minutos_plantao)
   }));
@@ -290,9 +378,10 @@ async function exportarExcel() {
   XLSX.writeFile(wb,"relatorio_plantao.xlsx");
 }
 
-/* INIT */
+/* ================= INIT ================= */
 listarTecnicos();
 listarAuxiliares();
+listarAtendimentos();
 </script>
 
 </body>
