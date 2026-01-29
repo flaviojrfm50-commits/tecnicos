@@ -114,28 +114,63 @@ function dataBR(iso){
   if(!iso) return "";
   return new Date(iso).toLocaleDateString("pt-BR",{ timeZone:"America/Sao_Paulo" });
 }
-function horaBR(iso){
+
+// Hora local normal (para deslocamento e fim)
+function horaLocalSP(iso){
   if(!iso) return "";
-  return new Date(iso).toLocaleTimeString("pt-BR",{
-    timeZone:"America/Sao_Paulo",
-    hour:"2-digit",
-    minute:"2-digit"
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit"
   });
 }
-function agoraISO(){
-  return new Date().toISOString();
+
+// Hora do acionamento (created_at vem em UTC do Supabase)
+function horaAcionamentoLocal(iso){
+  if(!iso) return "";
+
+  // força UTC caso venha sem timezone
+  const isoUTC = iso.endsWith("Z") ? iso : iso + "Z";
+
+  return new Date(isoUTC).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
-// ================= PLANTÃO =================
-function calcularMinutosPlantao(inicioISO,fimISO){
-  let atual=new Date(inicioISO), fim=new Date(fimISO), min=0;
-  while(atual<fim){
-    const h=atual.getHours();
-    if(h>=18||h<8) min++;
-    atual.setMinutes(atual.getMinutes()+1);
-  }
-  return min;
+
+
+function agoraISO(){
+  const agora = new Date();
+  const offsetMs = agora.getTimezoneOffset() * 60000;
+  return new Date(agora.getTime() - offsetMs).toISOString();
 }
+
+
+
+// ================= PLANTÃO =================
+function calcularMinutosPlantao(inicioISO, fimISO){
+  let atual = new Date(inicioISO);
+  const fim = new Date(fimISO);
+  let minutos = 0;
+
+  while (atual < fim) {
+    // converte para hora de São Paulo
+    const horaSP = new Date(
+      atual.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
+    ).getHours();
+
+    if (horaSP >= 18 || horaSP < 8) {
+      minutos++;
+    }
+
+    atual.setMinutes(atual.getMinutes() + 1);
+  }
+
+  return minutos;
+}
+
 
 // ================= LOGIN =================
 async function login(){
@@ -240,14 +275,20 @@ async function carregarAuxiliares(){
   (data||[]).forEach(a=>auxiliaresSelect.innerHTML+=`<option value="${a.nome}">${a.nome}</option>`);
 }
 
-// ================= TELEGRAM TEXTO (AJUSTADO) =================
+// ================= TELEGRAM TEXTO =================
 function textoInicio(at){
-return `📅 Data: ${dataBR(at.created_at)}
+  const acionamento = horaAcionamentoLocal(at.created_at);
+  const deslocamento = at.inicio_deslocamento
+    ? horaLocalSP(at.inicio_deslocamento)
+    : "Aguardando início";
+
+  return `📅 Data: ${dataBR(at.created_at)}
 👨‍🔧 Técnico: ${at.tecnico_nome}
 🧰 Auxiliar: ${(at.auxiliares||[]).join(", ")}
 🚗 Carro: ${at.veiculo_nome||""}
 📍 KM Inicial: ${at.km_inicial||""}
-⏰ Hora do Acionamento: ${horaBR(at.created_at)}
+⏰ Hora do Acionamento: ${acionamento}
+🕒 Início do Deslocamento: ${deslocamento}
 
 📄 Protocolo OxenteNet: ${at.protocolo}
 📄 Protocolo SPE: ${at.protocolo_spe||""}
@@ -255,30 +296,34 @@ return `📅 Data: ${dataBR(at.created_at)}
 📍 Local do Serviço:
 ${at.local_servico||""}
 
-📌 Localização:
-${at.localizacao||""}
-
 ⚙️ Causa do Serviço:
 ${at.tipo_servico||""}
 
 🧭 O que ocasionou o serviço:
 ${at.descricao||""}
 
+📌 Localização:
+${at.localizacao||"Não informada"}
+
 EM ATENDIMENTO`;
 }
 
-function textoFinal(at){
-  const plantaoTxt = at.minutos_plantao>0 ? "\n🚨 ATENDIMENTO EM PLANTÃO" : "";
 
-return `📅 Data: ${dataBR(at.created_at)}
+
+function textoFinal(at){
+  const plantaoTxt = at.minutos_plantao > 0 ? "\n🚨 ATENDIMENTO EM PLANTÃO" : "";
+  const inicioDesloc = at.inicio_deslocamento ? horaLocalSP(at.inicio_deslocamento) : "";
+  const fimDesloc = at.fim_atendimento ? horaLocalSP(at.fim_atendimento) : "";
+
+  return `📅 Data: ${dataBR(at.created_at)}
 👨‍🔧 Técnico: ${at.tecnico_nome}
 🧰 Auxiliar: ${(at.auxiliares||[]).join(", ")}
 🚗 Carro: ${at.veiculo_nome||""}
 📍 KM Inicial: ${at.km_inicial||""}
 🏁 KM Final: ${at.km_final||""}
-⏰ Hora do Acionamento: ${horaBR(at.created_at)}
-🕒 Início do Deslocamento: ${horaBR(at.inicio_deslocamento)}
-🕒 Fim do Deslocamento: ${horaBR(at.fim_atendimento)}
+⏰ Hora do Acionamento: ${horaAcionamentoLocal(at.created_at)}
+🕒 Início do Deslocamento: ${inicioDesloc}
+🕒 Fim do Deslocamento: ${fimDesloc}
 ${plantaoTxt}
 
 📄 Protocolo OxenteNet: ${at.protocolo}
@@ -288,7 +333,7 @@ ${plantaoTxt}
 ${at.local_servico||""}
 
 📌 Localização:
-${at.localizacao||""}
+${at.localizacao||"Não informada"}
 
 ⚙️ Causa do Serviço:
 ${at.tipo_servico||""}
@@ -299,6 +344,8 @@ ${at.descricao||""}
 📋 Como resolveu (Relato Final):
 ${at.como_resolveu||""}`;
 }
+
+
 
 // ================= INICIAR =================
 async function iniciarAtendimento(){
