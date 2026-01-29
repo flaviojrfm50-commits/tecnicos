@@ -45,9 +45,10 @@ button:hover { background: #218838; }
 <!-- ATENDIMENTO -->
 <div id="atendimentoForm" style="display:none;">
   <p>
-    Técnico: <strong id="tecnicoLogado"></strong><br>
-    <span id="statusAtendimento">🟢 SEM ATENDIMENTO</span>
-  </p>
+  Técnico: <strong id="tecnicoLogado"></strong><br>
+  <span id="statusAtendimento">🟢 SEM ATENDIMENTO</span><br>
+  <span id="plantaoTotal" style="font-weight:bold;color:#6f42c1;"></span>
+</p>
 
   <label>Fila de Atendimentos</label>
   <select id="selectAtendimento" onchange="onAtendimentoChange()"></select>
@@ -194,18 +195,20 @@ window.addEventListener("load",()=>{
 });
 
 function iniciarSessao(){
-  tecnicoLogado.textContent=tecnicoNome;
-  loginForm.style.display="none";
-  atendimentoForm.style.display="block";
+  tecnicoLogado.textContent = tecnicoNome;
+  loginForm.style.display = "none";
+  atendimentoForm.style.display = "block";
   carregarAtendimentos();
   carregarCarros();
   carregarAuxiliares();
+  carregarPlantaoTotal(); // 👈 só uma vez
 }
 
 function logout(){
   localStorage.removeItem("tecnico_logado");
   location.reload();
 }
+
 
 // ================= FILA =================
 setInterval(()=>{ if(tecnicoNome) carregarAtendimentos(); },5000);
@@ -274,6 +277,33 @@ async function carregarAuxiliares(){
   auxiliaresSelect.innerHTML="";
   (data||[]).forEach(a=>auxiliaresSelect.innerHTML+=`<option value="${a.nome}">${a.nome}</option>`);
 }
+
+async function carregarPlantaoTotal(){
+  // início do mês atual (00:00 do dia 1)
+  const agora = new Date();
+  const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  const inicioMesISO = inicioMes.toISOString();
+
+  const { data } = await supabaseClient
+    .from("atendimentos")
+    .select("minutos_plantao")
+    .eq("tecnico_nome", tecnicoNome)
+    .eq("status", "finalizado")
+    .gte("fim_atendimento", inicioMesISO); // 👈 só deste mês
+
+  const totalMin = (data || []).reduce(
+    (soma, a) => soma + (a.minutos_plantao || 0),
+    0
+  );
+
+  const horas = Math.floor(totalMin / 60);
+  const minutos = totalMin % 60;
+
+  plantaoTotal.textContent =
+    `🕒 Plantão do mês: ${horas}h ${minutos}min`;
+}
+
+
 
 // ================= TELEGRAM TEXTO =================
 function textoInicio(at){
@@ -401,6 +431,7 @@ async function finalizarAtendimento(){
   }
 
   carregarAtendimentos();
+  carregarPlantaoTotal();
 }
 </script>
 </body>
