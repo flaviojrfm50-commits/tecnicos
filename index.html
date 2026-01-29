@@ -12,14 +12,28 @@ button { background: #28a745; color: #fff; border: none; cursor: pointer; margin
 button:hover { background: #218838; }
 #statusAtendimento { font-weight: bold; font-size: 16px; margin: 8px 0; }
 .btn-sair { background:#dc3545; margin-top:15px; }
-#painelInfo { display:none; background:#fff; padding:12px; border-radius:6px; margin-top:10px; border-left:5px solid #007bff; }
-#painelInfo pre { background:#f8f8f8; padding:8px; border-radius:4px; white-space:pre-wrap; }
+
+#painelInfo {
+  display:none;
+  background:#fff;
+  padding:12px;
+  border-radius:6px;
+  margin-top:10px;
+  border-left:5px solid #007bff;
+}
+#painelInfo pre {
+  background:#f8f8f8;
+  padding:8px;
+  border-radius:4px;
+  white-space:pre-wrap;
+}
 </style>
 </head>
 <body>
 
 <h2>Painel do Técnico</h2>
 
+<!-- LOGIN -->
 <div id="loginForm">
   <label>Email</label>
   <input id="loginEmail">
@@ -28,6 +42,7 @@ button:hover { background: #218838; }
   <button onclick="login()">Entrar</button>
 </div>
 
+<!-- ATENDIMENTO -->
 <div id="atendimentoForm" style="display:none;">
   <p>
     Técnico: <strong id="tecnicoLogado"></strong><br>
@@ -37,6 +52,7 @@ button:hover { background: #218838; }
   <label>Fila de Atendimentos</label>
   <select id="selectAtendimento" onchange="onAtendimentoChange()"></select>
 
+  <!-- PAINEL INFORMATIVO -->
   <div id="painelInfo">
     <p><strong>📍 Local do Serviço</strong></p>
     <p id="infoLocalServico"></p>
@@ -48,6 +64,7 @@ button:hover { background: #218838; }
     <pre id="infoMaterial"></pre>
   </div>
 
+  <!-- INICIAR -->
   <div id="iniciarBox" style="display:none;">
     <label>Carro</label>
     <select id="carroSelect"></select>
@@ -61,6 +78,7 @@ button:hover { background: #218838; }
     <button onclick="iniciarAtendimento()">▶️ Iniciar Atendimento</button>
   </div>
 
+  <!-- FINALIZAR -->
   <div id="finalizarBox" style="display:none;">
     <label>KM Final</label>
     <input id="kmFinal" type="number">
@@ -76,28 +94,50 @@ button:hover { background: #218838; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// ================= SUPABASE =================
 const { createClient } = supabase;
 const supabaseClient = createClient(
   "https://bzgvbghxmebdjqnlakbj.supabase.co",
   "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv"
 );
 
+// ================= TELEGRAM =================
 const TELEGRAM_TOKEN = "8401740337:AAFxWCHx8M8Mc8Z-WHhhT-nfGlhAGP9L4dA";
 const TELEGRAM_CHAT_ID = "-4860857271";
 
+// ================= VARIÁVEIS =================
 let tecnicoNome = "";
 let atendimentoAtual = null;
 
-// ===== DATA / HORA =====
-function dataBR(v){ return v ? new Date(v).toLocaleDateString("pt-BR") : ""; }
-function horaBR(v){ return v ? new Date(v).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : ""; }
-
-// ✅ AJUSTE ÚNICO — HORA LOCAL (SEM UTC)
+// ================= DATA / HORA =================
+function dataBR(iso){
+  if(!iso) return "";
+  return new Date(iso).toLocaleDateString("pt-BR",{ timeZone:"America/Sao_Paulo" });
+}
+function horaBR(iso){
+  if(!iso) return "";
+  return new Date(iso).toLocaleTimeString("pt-BR",{
+    timeZone:"America/Sao_Paulo",
+    hour:"2-digit",
+    minute:"2-digit"
+  });
+}
 function agoraISO(){
-  return new Date().toLocaleString("sv-SE");
+  return new Date().toISOString();
 }
 
-// ===== LOGIN =====
+// ================= PLANTÃO =================
+function calcularMinutosPlantao(inicioISO,fimISO){
+  let atual=new Date(inicioISO), fim=new Date(fimISO), min=0;
+  while(atual<fim){
+    const h=atual.getHours();
+    if(h>=18||h<8) min++;
+    atual.setMinutes(atual.getMinutes()+1);
+  }
+  return min;
+}
+
+// ================= LOGIN =================
 async function login(){
   const { data } = await supabaseClient
     .from("tecnicos")
@@ -107,15 +147,16 @@ async function login(){
     .eq("ativo", true)
     .single();
   if(!data) return alert("Login inválido");
+
   tecnicoNome=data.nome;
   localStorage.setItem("tecnico_logado",tecnicoNome);
   iniciarSessao();
 }
 
-window.onload=()=>{
-  const t=localStorage.getItem("tecnico_logado");
-  if(t){ tecnicoNome=t; iniciarSessao(); }
-};
+window.addEventListener("load",()=>{
+  const salvo=localStorage.getItem("tecnico_logado");
+  if(salvo){ tecnicoNome=salvo; iniciarSessao(); }
+});
 
 function iniciarSessao(){
   tecnicoLogado.textContent=tecnicoNome;
@@ -127,11 +168,14 @@ function iniciarSessao(){
 }
 
 function logout(){
-  localStorage.clear();
+  localStorage.removeItem("tecnico_logado");
   location.reload();
 }
 
-// ===== ATENDIMENTOS =====
+// ================= FILA =================
+setInterval(()=>{ if(tecnicoNome) carregarAtendimentos(); },5000);
+
+// ================= ATENDIMENTOS =================
 async function carregarAtendimentos(){
   const { data } = await supabaseClient
     .from("atendimentos")
@@ -143,6 +187,8 @@ async function carregarAtendimentos(){
   selectAtendimento.innerHTML="";
   if(!data?.length){
     selectAtendimento.innerHTML="<option>Nenhum atendimento</option>";
+    iniciarBox.style.display=finalizarBox.style.display=painelInfo.style.display="none";
+    statusAtendimento.textContent="🟢 SEM ATENDIMENTO";
     return;
   }
 
@@ -153,42 +199,108 @@ async function carregarAtendimentos(){
     selectAtendimento.appendChild(o);
   });
 
-  onAtendimentoChange();
+  const ativo=data.find(a=>a.status==="em_atendimento");
+  if(ativo){
+    atendimentoAtual=ativo;
+    selectAtendimento.value=ativo.id;
+    iniciarBox.style.display="none";
+    finalizarBox.style.display="block";
+    painelInfo.style.display="none";
+    statusAtendimento.textContent="🔴 EM ATENDIMENTO";
+  }else{
+    selectAtendimento.value=data[0].id;
+    onAtendimentoChange();
+  }
 }
 
 async function onAtendimentoChange(){
-  const { data } = await supabaseClient
-    .from("atendimentos")
-    .select("*")
-    .eq("id",selectAtendimento.value)
-    .single();
+  const id=selectAtendimento.value;
+  const { data } = await supabaseClient.from("atendimentos").select("*").eq("id",id).single();
   atendimentoAtual=data;
+
   painelInfo.style.display="block";
-  infoLocalServico.textContent=data.local_servico||"";
-  infoDescricao.textContent=data.descricao||"";
-  infoMaterial.textContent=data.materiais||"";
+  infoLocalServico.textContent=data.local_servico||"Não informado";
+  infoDescricao.textContent=data.descricao||"Não informado";
+  infoMaterial.textContent=data.materiais||"Nenhum material informado";
+
+  iniciarBox.style.display="block";
+  finalizarBox.style.display="none";
+  statusAtendimento.textContent="🟡 AGUARDANDO INÍCIO";
 }
 
-// ===== CARROS / AUX =====
+// ================= CARROS / AUXILIARES =================
 async function carregarCarros(){
-  const { data } = await supabaseClient.from("veiculos").select("*");
-  carroSelect.innerHTML="<option></option>";
-  data?.forEach(v=>carroSelect.innerHTML+=`<option value="${v.placa}">${v.placa}</option>`);
+  const { data } = await supabaseClient.from("veiculos").select("placa,modelo");
+  carroSelect.innerHTML="<option value=''>Selecione</option>";
+  (data||[]).forEach(v=>carroSelect.innerHTML+=`<option value="${v.placa}">${v.placa} - ${v.modelo}</option>`);
 }
 async function carregarAuxiliares(){
   const { data } = await supabaseClient.from("auxiliares").select("nome").eq("ativo",true);
   auxiliaresSelect.innerHTML="";
-  data?.forEach(a=>auxiliaresSelect.innerHTML+=`<option value="${a.nome}">${a.nome}</option>`);
+  (data||[]).forEach(a=>auxiliaresSelect.innerHTML+=`<option value="${a.nome}">${a.nome}</option>`);
 }
 
-// ===== TELEGRAM =====
-function textoInicio(a){
-return `⏰ Hora: ${horaBR(a.inicio_deslocamento)}
-📄 Protocolo: ${a.protocolo}
-📍 Local: ${a.local_servico}`;
+// ================= TELEGRAM TEXTO (AJUSTADO) =================
+function textoInicio(at){
+return `📅 Data: ${dataBR(at.created_at)}
+👨‍🔧 Técnico: ${at.tecnico_nome}
+🧰 Auxiliar: ${(at.auxiliares||[]).join(", ")}
+🚗 Carro: ${at.veiculo_nome||""}
+📍 KM Inicial: ${at.km_inicial||""}
+⏰ Hora do Acionamento: ${horaBR(at.created_at)}
+
+📄 Protocolo OxenteNet: ${at.protocolo}
+📄 Protocolo SPE: ${at.protocolo_spe||""}
+
+📍 Local do Serviço:
+${at.local_servico||""}
+
+📌 Localização:
+${at.localizacao||""}
+
+⚙️ Causa do Serviço:
+${at.tipo_servico||""}
+
+🧭 O que ocasionou o serviço:
+${at.descricao||""}
+
+EM ATENDIMENTO`;
 }
 
-// ===== INICIAR =====
+function textoFinal(at){
+  const plantaoTxt = at.minutos_plantao>0 ? "\n🚨 ATENDIMENTO EM PLANTÃO" : "";
+
+return `📅 Data: ${dataBR(at.created_at)}
+👨‍🔧 Técnico: ${at.tecnico_nome}
+🧰 Auxiliar: ${(at.auxiliares||[]).join(", ")}
+🚗 Carro: ${at.veiculo_nome||""}
+📍 KM Inicial: ${at.km_inicial||""}
+🏁 KM Final: ${at.km_final||""}
+⏰ Hora do Acionamento: ${horaBR(at.created_at)}
+🕒 Início do Deslocamento: ${horaBR(at.inicio_deslocamento)}
+🕒 Fim do Deslocamento: ${horaBR(at.fim_atendimento)}
+${plantaoTxt}
+
+📄 Protocolo OxenteNet: ${at.protocolo}
+📄 Protocolo SPE: ${at.protocolo_spe||""}
+
+📍 Local do Serviço:
+${at.local_servico||""}
+
+📌 Localização:
+${at.localizacao||""}
+
+⚙️ Causa do Serviço:
+${at.tipo_servico||""}
+
+🧭 O que ocasionou o serviço:
+${at.descricao||""}
+
+📋 Como resolveu (Relato Final):
+${at.como_resolveu||""}`;
+}
+
+// ================= INICIAR =================
 async function iniciarAtendimento(){
   const aux=[...auxiliaresSelect.selectedOptions].map(o=>o.value);
   const { data } = await supabaseClient.from("atendimentos").update({
@@ -199,11 +311,49 @@ async function iniciarAtendimento(){
     status:"em_atendimento"
   }).eq("id",atendimentoAtual.id).select().single();
 
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,{
+  atendimentoAtual=data;
+
+  const res=await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,{
     method:"POST",
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({ chat_id:TELEGRAM_CHAT_ID, text:textoInicio(data) })
   });
+  const j=await res.json();
+  if(j?.result?.message_id){
+    await supabaseClient.from("atendimentos")
+      .update({telegram_message_id:j.result.message_id})
+      .eq("id",data.id);
+  }
+
+  carregarAtendimentos();
+}
+
+// ================= FINALIZAR =================
+async function finalizarAtendimento(){
+  const fimISO=agoraISO();
+  const minutos=calcularMinutosPlantao(atendimentoAtual.inicio_deslocamento,fimISO);
+
+  const { data } = await supabaseClient.from("atendimentos").update({
+    fim_atendimento:fimISO,
+    status:"finalizado",
+    km_final:Number(kmFinal.value),
+    como_resolveu:comoResolveu.value,
+    minutos_plantao:minutos
+  }).eq("id",atendimentoAtual.id).select().single();
+
+  if(data.telegram_message_id){
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText`,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({
+        chat_id:TELEGRAM_CHAT_ID,
+        message_id:data.telegram_message_id,
+        text:textoFinal(data)
+      })
+    });
+  }
+
+  carregarAtendimentos();
 }
 </script>
 </body>
