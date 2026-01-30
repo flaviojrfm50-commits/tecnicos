@@ -90,6 +90,8 @@ th{background:#eee;}
 <label>Data fim</label><input type="date" id="dataFim">
 <button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
 
+
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
@@ -108,22 +110,33 @@ function formatarPlantao(min){
 }
 
 /* ================= TECNICOS ================= */
-async function listarTecnicos(){
-  const {data} = await supabaseClient.from("tecnicos").select("*").order("nome");
+async function listarTecnicos() {
+  const { data: tecnicos } = await supabaseClient.from("tecnicos").select("*").order("nome");
+  const { data: atendimentos } = await supabaseClient.from("atendimentos")
+    .select("id, tecnico_nome, status")
+    .in("status", ["aberto", "em_atendimento"]);
+
   listaTecnicos.innerHTML = "";
-  (data || []).forEach(t=>{
+
+  (tecnicos || []).forEach(t => {
+    const atendAtual = atendimentos.find(a => a.tecnico_nome === t.nome);
+    let statusTexto = "";
+    if (!t.ativo) statusTexto = "🔴 INATIVO";
+    else if (!atendAtual) statusTexto = "🟢 SEM ATENDIMENTO";
+    else statusTexto = atendAtual.status === "em_atendimento" ? "🔴 EM ATENDIMENTO" : "🟡 AGUARDANDO INÍCIO";
+
     listaTecnicos.innerHTML += `
-    <tr>
-      <td>${t.nome}</td>
-      <td>${t.email}</td>
-      <td>${t.ativo ? "🟢 ATIVO" : "🔴 INATIVO"}</td>
-      <td>
-        <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
-        <button class="${t.ativo ? "btn-danger" : "btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
-          ${t.ativo ? "Desativar" : "Ativar"}
-        </button>
-      </td>
-    </tr>`;
+      <tr>
+        <td>${t.nome}</td>
+        <td>${t.email}</td>
+        <td>${statusTexto}</td>
+        <td>
+          <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
+          <button class="${t.ativo ? "btn-danger" : "btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
+            ${t.ativo ? "Desativar" : "Ativar"}
+          </button>
+        </td>
+      </tr>`;
   });
 }
 
@@ -236,61 +249,83 @@ async function criarAtendimento(){
   const dados = {
     protocolo: Number(protocoloAtendimento.value),
     protocolo_spe: protocoloSPEAtendimento.value || null,
-
     tipo_servico: tipoServico.value || null,
     descricao: descricaoAtendimento.value || null,
-    materiais: materiaisAtendimento.value || null, // 👈 MATERIAL AQUI
+    materiais: materiaisAtendimento.value || null,
     local_servico: localServicoAtendimento.value || null,
     localizacao: localizacaoAtendimento.value || null,
-
     tecnico_nome: tecnicoAtendimento.value,
+    status: "aberto",
     minutos_plantao: 0
   };
 
-  const { error } = await supabaseClient
-    .from("atendimentos")
-    .insert([dados]);
-
+  const { error } = await supabaseClient.from("atendimentos").insert([dados]);
   if(error) return alert("Erro ao criar atendimento: " + error.message);
 
   alert("Atendimento criado com sucesso!");
-
   protocoloAtendimento.value = "";
   protocoloSPEAtendimento.value = "";
   tipoServico.value = "";
   descricaoAtendimento.value = "";
-  materiaisAtendimento.value = ""; // 👈 LIMPA MATERIAL
+  materiaisAtendimento.value = "";
   localServicoAtendimento.value = "";
   localizacaoAtendimento.value = "";
   tecnicoAtendimento.value = "";
 }
 
+/* ================= CALCULO DE PLANTAO ================= */
+function minutosPlantao(inicioStr, fimStr) {
+  if (!inicioStr || !fimStr) return 0;
+
+  const inicio = new Date(inicioStr);
+  const fim = new Date(fimStr);
+
+  const inicioSP = new Date(inicio.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const fimSP = new Date(fim.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+
+  const plantaoStart = new Date(inicioSP);
+  plantaoStart.setHours(18,0,0,0);
+
+  if(fimSP <= plantaoStart) return 0;
+  const realInicio = inicioSP < plantaoStart ? plantaoStart : inicioSP;
+  return Math.floor((fimSP - realInicio)/60000);
+}
+
 /* ================= EXPORTAR EXCEL ================= */
-async function exportarExcel(){
-  if(!dataInicio.value || !dataFim.value)
-    return alert("Informe o período");
+async function exportarExcel() {
+  if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
 
-  const {data} = await supabaseClient
-    .from("atendimentos")
-    .select("*")
-    .gte("inicio_deslocamento", dataInicio.value + "T00:00:00")
-    .lte("inicio_deslocamento", dataFim.value + "T23:59:59")
-    .gt("minutos_plantao", 0);
+  const inicioSP = new Date(dataInicio.value + "T00:00:00");
+  const fimSP = new Date(dataFim.value + "T23:59:59");
 
-  const rows = (data || []).map(a => ({
-    Data: a.inicio_deslocamento?.split("T")[0] || "",
+  const { data, error } = await supabaseClient.from("atendimentos")
+    .select("*").eq("status","finalizado");
+
+  if(error) return alert("Erro ao buscar atendimentos: "+error.message);
+
+  const filtrados = data.filter(a=>{
+    const fimAtend = a.fim_atendimento ? new Date(a.fim_atendimento) : null;
+    return fimAtend && fimAtend >= inicioSP && fimAtend <= fimSP;
+  });
+
+  if(!filtrados.length) return alert("Nenhum atendimento no período");
+
+  const rows = filtrados.map(a=>({
+    Data: a.fim_atendimento?.split("T")[0] || "",
     Técnico: a.tecnico_nome,
     Protocolo: a.protocolo,
     "Protocolo SPE": a.protocolo_spe || "",
     Início: a.inicio_deslocamento?.split("T")[1]?.slice(0,5) || "",
     Fim: a.fim_atendimento?.split("T")[1]?.slice(0,5) || "",
-    Plantão: formatarPlantao(a.minutos_plantao)
+    Plantão: formatarPlantao(minutosPlantao(a.inicio_deslocamento, a.fim_atendimento))
   }));
 
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Plantao");
   XLSX.writeFile(wb, "relatorio_plantao.xlsx");
+
+  alert("Planilha gerada com sucesso!");
 }
 
 /* ================= INIT ================= */
