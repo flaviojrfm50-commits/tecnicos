@@ -5,7 +5,7 @@
 <title>Administração</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body { font-family: Arial; max-width: 1000px; margin: 20px auto; background:#f4f4f4; padding:20px; border-radius:8px;}
+body { font-family: Arial; max-width: 1000px; margin: 0 auto; background:#f4f4f4; padding:20px; border-radius:8px;}
 h2,h3{text-align:center;}
 label{font-weight:bold;margin-top:10px;display:block;}
 input,textarea,select,button{width:100%;padding:8px;margin-top:5px;}
@@ -18,13 +18,30 @@ button{border:none;cursor:pointer;margin-top:8px;}
 table{width:100%;margin-top:15px;border-collapse:collapse;background:#fff;}
 th,td{border:1px solid #ccc;padding:6px;}
 th{background:#eee;}
+
+/* ===== Login Modal ===== */
+#loginModal {
+  position: fixed;
+  top:0; left:0; width:100%; height:100%;
+  background: rgba(0,0,0,0.6);
+  display:flex; justify-content:center; align-items:center;
+}
+#loginModalContent {
+  background:#fff; padding:30px; border-radius:8px; width:300px; text-align:center;
+}
+#loginModal input{width:100%; margin:8px 0; padding:8px;}
+#btnSair {background:#dc3545;color:#fff; margin-bottom:20px;}
 </style>
 </head>
 <body>
 
+<!-- ===== Botão Sair ===== -->
+<button id="btnSair" style="display:none;" onclick="logout()">Sair</button>
+
 <h2>Administração</h2>
 
 <!-- ================= TECNICOS ================= -->
+<div id="adminContent">
 <h3>Cadastro de Técnicos</h3>
 <input type="hidden" id="editIdTec">
 <label>Nome</label><input id="nomeTec">
@@ -53,7 +70,15 @@ th{background:#eee;}
 <tbody id="listaAuxiliares"></tbody>
 </table>
 
+<!-- ================= RELATORIO ================= -->
+<h3>Relatório de Plantão</h3>
+<label>Data início</label><input type="date" id="dataInicio">
+<label>Data fim</label><input type="date" id="dataFim">
+<button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
+</div>
+
 <!-- ================= CRIAR ATENDIMENTO ================= -->
+<div id="atendimentoContent" style="display:none;">
 <h3>Criar Atendimento</h3>
 
 <label>Protocolo (obrigatório)</label>
@@ -84,13 +109,29 @@ th{background:#eee;}
 
 <button class="btn-add" onclick="criarAtendimento()">💾 Criar Atendimento</button>
 
-<!-- ================= RELATORIO ================= -->
-<h3>Relatório de Plantão</h3>
-<label>Data início</label><input type="date" id="dataInicio">
-<label>Data fim</label><input type="date" id="dataFim">
-<button class="btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
-<button class="btn-export" onclick="exportarExcelResumoPorTecnico()">📊 Resumo por Técnico</button>
+<h3>Atendimentos Hoje</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Protocolo</th>
+      <th>Técnico</th>
+      <th>Status</th>
+      <th>Descrição</th>
+    </tr>
+  </thead>
+  <tbody id="listaAtendimentosHoje"></tbody>
+</table>
+</div>
 
+<!-- ===== Login Modal ===== -->
+<div id="loginModal">
+  <div id="loginModalContent">
+    <h3>Login</h3>
+    <input id="loginSenha" type="password" placeholder="Digite a senha">
+    <button onclick="login()">Entrar</button>
+    <p style="font-size:12px;margin-top:10px;">Senha Admin ou Atendimento</p>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -102,6 +143,60 @@ const supabaseClient = createClient(
   "sb_publishable_IyvZNwtgkvECR0QVlYbhzw_zPL1TMJv"
 );
 
+/* ===== SENHAS ===== */
+const SENHA_ADMIN = "admin123";
+const SENHA_ATENDIMENTO = "atendimento123";
+
+/* ===== LOGIN ===== */
+function login(){
+  const senha = document.getElementById("loginSenha").value;
+  if(senha === SENHA_ADMIN){
+    localStorage.setItem("perfil","admin");
+    mostrarConteudo();
+  } else if(senha === SENHA_ATENDIMENTO){
+    localStorage.setItem("perfil","atendimento");
+    mostrarConteudo();
+  } else {
+    alert("Senha incorreta!");
+  }
+}
+
+function logout(){
+  localStorage.removeItem("perfil");
+  document.getElementById("loginModal").style.display = "flex";
+  document.getElementById("adminContent").style.display = "none";
+  document.getElementById("atendimentoContent").style.display = "none";
+  document.getElementById("btnSair").style.display = "none";
+}
+
+function mostrarConteudo(){
+  const perfil = localStorage.getItem("perfil");
+  if(perfil === "admin"){
+    document.getElementById("adminContent").style.display = "block";
+    document.getElementById("atendimentoContent").style.display = "none";
+  } else if(perfil === "atendimento"){
+    document.getElementById("adminContent").style.display = "none";
+    document.getElementById("atendimentoContent").style.display = "block";
+    listarAtendimentosHoje(); // mostra atendimentos quando entrar no painel
+  }
+  document.getElementById("loginModal").style.display = "none";
+  document.getElementById("btnSair").style.display = "block";
+}
+
+/* ===== Persistência de Login ===== */
+window.onload = function(){
+  const perfil = localStorage.getItem("perfil");
+  if(perfil){
+    mostrarConteudo();
+  } else {
+    document.getElementById("loginModal").style.display = "flex";
+  }
+
+  listarTecnicos();
+  listarAuxiliares();
+  carregarTecnicosSelect();
+};
+
 /* ================= UTIL ================= */
 function formatarPlantao(min){
   if(!min) return "00h00min";
@@ -110,22 +205,33 @@ function formatarPlantao(min){
 }
 
 /* ================= TECNICOS ================= */
-async function listarTecnicos(){
-  const {data} = await supabaseClient.from("tecnicos").select("*").order("nome");
+async function listarTecnicos() {
+  const { data: tecnicos } = await supabaseClient.from("tecnicos").select("*").order("nome");
+  const { data: atendimentos } = await supabaseClient.from("atendimentos")
+    .select("id, tecnico_nome, status")
+    .in("status", ["aberto", "em_atendimento"]);
+
   listaTecnicos.innerHTML = "";
-  (data || []).forEach(t=>{
+
+  (tecnicos || []).forEach(t => {
+    const atendAtual = atendimentos.find(a => a.tecnico_nome === t.nome);
+    let statusTexto = "";
+    if (!t.ativo) statusTexto = "🔴 INATIVO";
+    else if (!atendAtual) statusTexto = "🟢 SEM ATENDIMENTO";
+    else statusTexto = atendAtual.status === "em_atendimento" ? "🔴 EM ATENDIMENTO" : "🟡 AGUARDANDO INÍCIO";
+
     listaTecnicos.innerHTML += `
-    <tr>
-      <td>${t.nome}</td>
-      <td>${t.email}</td>
-      <td>${t.ativo ? "🟢 ATIVO" : "🔴 INATIVO"}</td>
-      <td>
-        <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
-        <button class="${t.ativo ? "btn-danger" : "btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
-          ${t.ativo ? "Desativar" : "Ativar"}
-        </button>
-      </td>
-    </tr>`;
+      <tr>
+        <td>${t.nome}</td>
+        <td>${t.email}</td>
+        <td>${statusTexto}</td>
+        <td>
+          <button class="btn-edit" onclick="editarTecnico('${t.id}','${t.nome}','${t.email}')">Editar</button>
+          <button class="${t.ativo ? "btn-danger" : "btn-success"}" onclick="toggleTecnico('${t.id}',${t.ativo})">
+            ${t.ativo ? "Desativar" : "Ativar"}
+          </button>
+        </td>
+      </tr>`;
   });
 }
 
@@ -232,234 +338,108 @@ async function carregarTecnicosSelect(){
 
 /* ================= CRIAR ATENDIMENTO ================= */
 async function criarAtendimento(){
-  if(!protocoloAtendimento.value || !tecnicoAtendimento.value)
-    return alert("Informe o protocolo e o técnico");
+  const protocolo = protocoloAtendimento.value;
+  const tecnico = tecnicoAtendimento.value;
+
+  if(!protocolo || !tecnico) return alert("Informe o protocolo e o técnico");
 
   const dados = {
-  protocolo: Number(protocoloAtendimento.value),
-  protocolo_spe: protocoloSPEAtendimento.value || null,
+    protocolo: Number(protocolo),
+    protocolo_spe: protocoloSPEAtendimento.value || null,
+    tipo_servico: tipoServico.value || null,
+    descricao: descricaoAtendimento.value || null,
+    materiais: materiaisAtendimento.value || null,
+    local_servico: localServicoAtendimento.value || null,
+    localizacao: localizacaoAtendimento.value || null,
+    tecnico_nome: tecnico,
+    status: "aberto",
+    minutos_plantao: 0
+  };
 
-  tipo_servico: tipoServico.value || null,
-  descricao: descricaoAtendimento.value || null,
-  materiais: materiaisAtendimento.value || null,
-  local_servico: localServicoAtendimento.value || null,
-  localizacao: localizacaoAtendimento.value || null,
-
-  tecnico_nome: tecnicoAtendimento.value,
-  status: "aberto",          // ✅ ESSENCIAL
-  minutos_plantao: 0
-};
-
-
-  const { error } = await supabaseClient
-    .from("atendimentos")
-    .insert([dados]);
-
+  const { error } = await supabaseClient.from("atendimentos").insert([dados]);
   if(error) return alert("Erro ao criar atendimento: " + error.message);
 
   alert("Atendimento criado com sucesso!");
 
-  protocoloAtendimento.value = "";
-  protocoloSPEAtendimento.value = "";
-  tipoServico.value = "";
-  descricaoAtendimento.value = "";
-  materiaisAtendimento.value = ""; // 👈 LIMPA MATERIAL
-  localServicoAtendimento.value = "";
-  localizacaoAtendimento.value = "";
-  tecnicoAtendimento.value = "";
+  ["protocoloAtendimento","protocoloSPEAtendimento","tipoServico",
+   "descricaoAtendimento","materiaisAtendimento","localServicoAtendimento",
+   "localizacaoAtendimento","tecnicoAtendimento"].forEach(id=>document.getElementById(id).value="");
+
+  listarAtendimentosHoje(); // Atualiza tabela
+}
+
+/* ================= LISTA ATENDIMENTOS HOJE ================= */
+async function listarAtendimentosHoje() {
+  const hoje = new Date().toISOString().split("T")[0];
+  const { data } = await supabaseClient
+    .from("atendimentos")
+    .select("*")
+    .gte("created_at", hoje + "T00:00:00")
+    .lte("created_at", hoje + "T23:59:59")
+    .order("created_at", { ascending: true });
+
+  listaAtendimentosHoje.innerHTML = "";
+  (data || []).forEach(a => {
+    listaAtendimentosHoje.innerHTML += `
+      <tr>
+        <td>${a.protocolo}</td>
+        <td>${a.tecnico_nome}</td>
+        <td>${a.status}</td>
+        <td>${a.descricao || ""}</td>
+      </tr>`;
+  });
+}
+
+/* ================= CALCULO DE PLANTAO ================= */
+function minutosPlantao(inicioStr, fimStr) {
+  if (!inicioStr || !fimStr) return 0;
+  const inicio = new Date(inicioStr);
+  const fim = new Date(fimStr);
+  const inicioSP = new Date(inicio.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const fimSP = new Date(fim.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const plantaoStart = new Date(inicioSP);
+  plantaoStart.setHours(18,0,0,0);
+  if(fimSP <= plantaoStart) return 0;
+  const realInicio = inicioSP < plantaoStart ? plantaoStart : inicioSP;
+  return Math.floor((fimSP - realInicio)/60000);
 }
 
 /* ================= EXPORTAR EXCEL ================= */
 async function exportarExcel() {
-  if (!dataInicio.value || !dataFim.value) {
-    return alert("Informe o período");
-  }
-
-  // Função para ajustar datas para SP
-  function ajustarDataSP(dateStr, fim = false) {
-    const d = new Date(dateStr + "T00:00:00");
-    const offset = -3; // SP é UTC-3
-    d.setHours(d.getHours() + offset);
-    if (fim) d.setHours(d.getHours() + 24); // fim do dia
-    return d;
-  }
-
-  const inicioSP = ajustarDataSP(dataInicio.value);
-  const fimSP = ajustarDataSP(dataFim.value, true);
-
- 
-  // Determinar data do plantão considerando 18h
-  function calcularDataPlantao(inicioISO, fimISO) {
-    const d = new Date(fimISO || inicioISO);
-    const horaSP = new Date(
-      d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
-    ).getHours();
-
-    // Plantão após 18h permanece no dia, senão não entra
-    return d.toISOString().split("T")[0];
-  }
-
-  try {
-    const { data, error } = await supabaseClient
-      .from("atendimentos")
-      .select("*")
-      .eq("status", "finalizado")
-      .gt("minutos_plantao", 0);
-
-    if (error) {
-      console.error("Erro Supabase:", error);
-      return alert("Erro ao buscar dados. Veja o console.");
-    }
-
-    // Filtrar plantões no período e após 18h
-    const filtrados = (data || []).filter(a => {
-      if (!a.fim_atendimento) return false;
-
-      const dFim = new Date(a.fim_atendimento);
-      const horaSP = new Date(
-        dFim.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
-      ).getHours();
-
-      const dataPlantao = calcularDataPlantao(a.inicio_deslocamento, a.fim_atendimento);
-
-      // Só plantões dentro do período
-      const plantaoDate = new Date(dataPlantao + "T00:00:00");
-      return horaSP >= 18 && plantaoDate >= inicioSP && plantaoDate <= fimSP;
-    });
-
-    if (filtrados.length === 0) {
-      return alert("Nenhum plantão encontrado no período.");
-    }
-
-    // Montar linhas para Excel
-    const rows = filtrados.map(a => ({
-      Data: calcularDataPlantao(a.inicio_deslocamento, a.fim_atendimento),
-      Técnico: a.tecnico_nome,
-      Protocolo: a.protocolo,
-      "Protocolo SPE": a.protocolo_spe || "",
-      Início: a.inicio_deslocamento?.split("T")[1]?.slice(0, 5) || "",
-      Fim: a.fim_atendimento?.split("T")[1]?.slice(0, 5) || "",
-      Plantão: formatarPlantao(calcularMinutosPlantao(a.inicio_deslocamento, a.fim_atendimento))
-
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Plantão");
-    XLSX.writeFile(wb, "relatorio_plantao.xlsx");
-
-    alert("Planilha gerada com sucesso!");
-
-  } catch (err) {
-    console.error("Erro inesperado:", err);
-    alert("Ocorreu um erro ao gerar o Excel. Veja o console.");
-  }
-}
-
-
-
-/* ================= INIT ================= */
-async function exportarExcelResumoPorTecnico() {
-  if (!dataInicio.value || !dataFim.value) {
-    return alert("Informe o período");
-  }
+  if (!dataInicio.value || !dataFim.value) return alert("Informe o período");
 
   const inicioSP = new Date(dataInicio.value + "T00:00:00");
   const fimSP = new Date(dataFim.value + "T23:59:59");
 
+  const { data, error } = await supabaseClient.from("atendimentos")
+    .select("*").eq("status","finalizado");
 
-  function calcularDataPlantaoPlantao(inicioISO, fimISO) {
-    const d = new Date(fimISO || inicioISO);
-    const horaSP = new Date(
-      d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
-    ).getHours();
+  if(error) return alert("Erro ao buscar atendimentos: "+error.message);
 
-    // Plantão das 18h em diante pertence ao dia seguinte
-    if (horaSP >= 18) d.setDate(d.getDate() + 1);
+  const filtrados = data.filter(a=>{
+    const fimAtend = a.fim_atendimento ? new Date(a.fim_atendimento) : null;
+    return fimAtend && fimAtend >= inicioSP && fimAtend <= fimSP;
+  });
 
-    return d.toISOString().split("T")[0];
-  }
+  if(!filtrados.length) return alert("Nenhum atendimento no período");
 
-  try {
-    const { data, error } = await supabaseClient
-      .from("atendimentos")
-      .select("*")
-      .eq("status", "finalizado")
-      .gt("minutos_plantao", 0);
+  const rows = filtrados.map(a=>({
+    Data: a.fim_atendimento?.split("T")[0] || "",
+    Técnico: a.tecnico_nome,
+    Protocolo: a.protocolo,
+    "Protocolo SPE": a.protocolo_spe || "",
+    Início: a.inicio_deslocamento?.split("T")[1]?.slice(0,5) || "",
+    Fim: a.fim_atendimento?.split("T")[1]?.slice(0,5) || "",
+    Plantão: formatarPlantao(minutosPlantao(a.inicio_deslocamento, a.fim_atendimento))
+  }));
 
-    if (error) {
-      console.error(error);
-      return alert("Erro ao buscar dados. Veja o console.");
-    }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Plantao");
+  XLSX.writeFile(wb, "relatorio_plantao.xlsx");
 
-    const filtrados = (data || []).filter(a => {
-      if (!a.fim_atendimento) return false;
-      const plantaoDate = new Date(calcularDataPlantaoPlantao(a.inicio_deslocamento, a.fim_atendimento) + "T00:00:00");
-      return plantaoDate >= inicioSP && plantaoDate <= fimSP;
-    });
-
-    if (filtrados.length === 0) return alert("Nenhum plantão encontrado no período.");
-
-    // Agrupar por técnico e somar minutos
-    const resumo = {};
-    filtrados.forEach(a => {
-  if (!resumo[a.tecnico_nome]) resumo[a.tecnico_nome] = 0;
-  resumo[a.tecnico_nome] += calcularMinutosPlantao(a.inicio_deslocamento, a.fim_atendimento);
-});
-
-
-    const rows = Object.entries(resumo).map(([tec, min]) => ({
-      Técnico: tec,
-      "Total Plantão": formatarPlantao(min)
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Resumo Plantão");
-    XLSX.writeFile(wb, "resumo_plantao.xlsx");
-
-    alert("Planilha resumida por técnico gerada com sucesso!");
-  } catch (err) {
-    console.error(err);
-    alert("Ocorreu um erro ao gerar o Excel. Veja o console.");
-  }
+  alert("Planilha gerada com sucesso!");
 }
-function calcularMinutosPlantao(inicioISO, fimISO) {
-  if (!inicioISO || !fimISO) return 0;
-
-  const inicio = new Date(inicioISO);
-  const fim = new Date(fimISO);
-
-  // Diferença em minutos
-  let diffMin = Math.floor((fim - inicio) / 1000 / 60);
-
-  // Se quiser garantir mínimo de 1 minuto
-  if (diffMin <= 0) diffMin = 1;
-
-  return diffMin;
-}
-
-
-
-listarTecnicos();
-listarAuxiliares();
-carregarTecnicosSelect();
-
-function calcularDataPlantao(inicioISO){
-  const d = new Date(inicioISO);
-
-  const horaSP = new Date(
-    d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
-  ).getHours();
-
-  // Plantão das 18h em diante pertence ao dia seguinte
-  if (horaSP >= 18) {
-    d.setDate(d.getDate() + 1);
-  }
-
-  return d.toISOString().split("T")[0];
-}
-
 </script>
 
 </body>
