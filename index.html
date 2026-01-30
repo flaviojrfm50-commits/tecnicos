@@ -81,14 +81,18 @@ button:hover { background: #218838; }
 
   <!-- FINALIZAR -->
   <div id="finalizarBox" style="display:none;">
-    <label>KM Final</label>
-    <input id="kmFinal" type="number">
+  <label>KM Final</label>
+  <input id="kmFinal" type="number">
 
-    <label>Como resolveu</label>
-    <textarea id="comoResolveu"></textarea>
+  <label>Como resolveu</label>
+  <textarea id="comoResolveu"></textarea>
 
-    <button onclick="finalizarAtendimento()">✅ Finalizar Atendimento</button>
-  </div>
+  <label>Material utilizado</label>
+  <textarea id="materialUtilizado"></textarea>
+
+  <button onclick="finalizarAtendimento()">✅ Finalizar Atendimento</button>
+</div>
+
 
   <button class="btn-sair" onclick="logout()">Sair</button>
 </div>
@@ -282,7 +286,10 @@ async function carregarPlantaoTotal(){
   // início do mês atual (00:00 do dia 1)
   const agora = new Date();
   const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
-  const inicioMesISO = inicioMes.toISOString();
+  const inicioMesISO = new Date(
+  inicioMes.getTime() - inicioMes.getTimezoneOffset() * 60000
+).toISOString();
+
 
   const { data } = await supabaseClient
     .from("atendimentos")
@@ -347,34 +354,36 @@ function textoFinal(at){
 
   return `📅 Data: ${dataBR(at.created_at)}
 👨‍🔧 Técnico: ${at.tecnico_nome}
-🧰 Auxiliar: ${(at.auxiliares||[]).join(", ")}
-🚗 Carro: ${at.veiculo_nome||""}
-📍 KM Inicial: ${at.km_inicial||""}
-🏁 KM Final: ${at.km_final||""}
+🧰 Auxiliar: ${(at.auxiliares || []).join(", ")}
+🚗 Carro: ${at.veiculo_nome || ""}
+📍 KM Inicial: ${at.km_inicial || ""}
+🏁 KM Final: ${at.km_final || ""}
 ⏰ Hora do Acionamento: ${horaAcionamentoLocal(at.created_at)}
 🕒 Início do Deslocamento: ${inicioDesloc}
 🕒 Fim do Deslocamento: ${fimDesloc}
 ${plantaoTxt}
 
 📄 Protocolo OxenteNet: ${at.protocolo}
-📄 Protocolo SPE: ${at.protocolo_spe||""}
+📄 Protocolo SPE: ${at.protocolo_spe || ""}
 
 📍 Local do Serviço:
-${at.local_servico||""}
-
-📌 Localização:
-${at.localizacao||"Não informada"}
+${at.local_servico || ""}
 
 ⚙️ Causa do Serviço:
-${at.tipo_servico||""}
+${at.tipo_servico || ""}
 
 🧭 O que ocasionou o serviço:
-${at.descricao||""}
+${at.descricao || ""}
 
 📋 Como resolveu (Relato Final):
-${at.como_resolveu||""}`;
-}
+${at.como_resolveu || ""}
 
+🧰 Material utilizado:
+${at.material_utilizado || "Não informado"}
+
+📌 Localização:
+${at.localizacao || "Não informada"}`;
+}
 
 
 // ================= INICIAR =================
@@ -407,25 +416,63 @@ async function iniciarAtendimento(){
 
 // ================= FINALIZAR =================
 async function finalizarAtendimento(){
-  const fimISO=agoraISO();
-  const minutos=calcularMinutosPlantao(atendimentoAtual.inicio_deslocamento,fimISO);
+  const fimISO = agoraISO(); // ⏰ hora real do clique
+  const minutos = calcularMinutosPlantao(
+    atendimentoAtual.inicio_deslocamento,
+    fimISO
+  );
 
-  const { data } = await supabaseClient.from("atendimentos").update({
-    fim_atendimento:fimISO,
-    status:"finalizado",
-    km_final:Number(kmFinal.value),
-    como_resolveu:comoResolveu.value,
-    minutos_plantao:minutos
-  }).eq("id",atendimentoAtual.id).select().single();
+  // 🔴 OFFLINE
+  if (!navigator.onLine) {
+    const pendentes = JSON.parse(
+  localStorage.getItem("finalizacoes_pendentes") || "[]"
+);
 
-  if(data.telegram_message_id){
+pendentes.push({
+  id: atendimentoAtual.id,
+  fim_atendimento: fimISO,
+  km_final: kmFinal.value,
+  como_resolveu: comoResolveu.value,
+  material_utilizado: materialUtilizado.value,
+  minutos_plantao: minutos
+});
+
+localStorage.setItem(
+  "finalizacoes_pendentes",
+  JSON.stringify(pendentes)
+);
+
+
+    alert("📴 Sem internet.\nAtendimento finalizado e será sincronizado depois.");
+
+    atendimentoAtual = null;
+    carregarAtendimentos();
+    return;
+  }
+
+  // 🟢 ONLINE
+  const { data } = await supabaseClient
+    .from("atendimentos")
+    .update({
+      fim_atendimento: fimISO,
+      status: "finalizado",
+      km_final: Number(kmFinal.value),
+      como_resolveu: comoResolveu.value,
+      material_utilizado: materialUtilizado.value || null,
+      minutos_plantao: minutos
+    })
+    .eq("id", atendimentoAtual.id)
+    .select()
+    .single();
+
+  if (data?.telegram_message_id) {
     await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText`,{
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify({
-        chat_id:TELEGRAM_CHAT_ID,
-        message_id:data.telegram_message_id,
-        text:textoFinal(data)
+        chat_id: TELEGRAM_CHAT_ID,
+        message_id: data.telegram_message_id,
+        text: textoFinal(data)
       })
     });
   }
@@ -433,6 +480,35 @@ async function finalizarAtendimento(){
   carregarAtendimentos();
   carregarPlantaoTotal();
 }
+window.addEventListener("online", async () => {
+  const pendentes = JSON.parse(
+    localStorage.getItem("finalizacoes_pendentes") || "[]"
+  );
+
+  if (!pendentes.length) return;
+
+  for (const dados of pendentes) {
+    await supabaseClient
+      .from("atendimentos")
+      .update({
+        fim_atendimento: dados.fim_atendimento,
+        status: "finalizado",
+        km_final: Number(dados.km_final),
+        como_resolveu: dados.como_resolveu,
+        material_utilizado: dados.material_utilizado,
+        minutos_plantao: dados.minutos_plantao
+      })
+      .eq("id", dados.id);
+  }
+
+  localStorage.removeItem("finalizacoes_pendentes");
+
+  alert(`✅ ${pendentes.length} atendimentos sincronizados`);
+  carregarPlantaoTotal();
+});
+
+
+
 </script>
 </body>
 </html>
